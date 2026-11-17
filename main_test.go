@@ -96,7 +96,7 @@ func TestNew(t *testing.T) {
 		t.Fatalf("new: exit %d\n%s%s", out.Exit, out.Stdout, out.Stderr)
 	}
 	into := filepath.Join(dir, "plugin-my-notes")
-	for _, f := range []string{"plugin.toml", "main.go", "main_test.go", "agents.md", ".gitignore", "README.md", "migrations/0001_visits.sql", "views/index.html"} {
+	for _, f := range []string{"plugin.toml", "main.go", "main_test.go", "agents.md", ".gitignore", "README.md", "migrations/0001_visits.sql", "views/index.html", ".github/workflows/release.yml", ".github/workflows/pr.yml"} {
 		if _, err := os.Stat(filepath.Join(into, f)); err != nil {
 			t.Errorf("it didn't write %s", f)
 		}
@@ -114,6 +114,10 @@ func TestNew(t *testing.T) {
 	}
 	if got := read("views/index.html"); !strings.Contains(got, "{{.Greeting}}") || !strings.Contains(got, `{{define "title"}}My notes{{end}}`) {
 		t.Errorf("views/index.html:\n%s", got)
+	}
+	// Its workflows are GitHub's own ${{ }}, left as they are.
+	if got := read(".github/workflows/release.yml"); !strings.Contains(got, "${{ github.token }}") || !strings.Contains(got, `tags: ["v*"]`) {
+		t.Errorf("release.yml:\n%s", got)
 	}
 	if !strings.Contains(out.Stdout, "ws plugin-dev watch") {
 		t.Errorf("it didn't say what's next:\n%s", out.Stdout)

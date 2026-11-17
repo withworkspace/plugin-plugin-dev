@@ -27,3 +27,17 @@ go test ./...
 ```
 
 runs it against a stand-in for ws.
+
+## Publishing it
+
+Once it's a repo on GitHub, a tag publishes it: `.github/workflows/release.yml` builds it for macOS and Linux, on Intel and ARM, and makes a GitHub release of the builds. The tag is `v` and the `version` in `plugin.toml`.
+
+```bash
+git tag v0.1.0
+```
+
+```bash
+git push origin v0.1.0
+```
+
+Then anyone installs it with `ws plugin add <owner>/<repo>`, and `ws plugin update` fetches a newer release. Before it has a release, the same command builds it from its source, which needs Go.

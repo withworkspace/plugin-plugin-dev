@@ -1,5 +1,5 @@
-github.com/brudil/workspace-kit v0.0.0-20261117143726-b5ebfd9f76c4 h1:J85OCVh8PG7Y5Lankk/dxjWNIBYHKLG9uEoZLTwE0Sc=
-github.com/brudil/workspace-kit v0.0.0-20261117143726-b5ebfd9f76c4/go.mod h1:8bVAMfTDUfqGsXKIattxgyxfpnyMTgBSbu9g8LriGJw=
+github.com/brudil/workspace-kit v0.0.0-20261117141708-e5f7613a5f17 h1:ikzyH66Xhm07ckVCTC8R9CMLwf21JMhrUH2NvtbE1Dc=
+github.com/brudil/workspace-kit v0.0.0-20261117141708-e5f7613a5f17/go.mod h1:8bVAMfTDUfqGsXKIattxgyxfpnyMTgBSbu9g8LriGJw=
 github.com/dustin/go-humanize v1.1.0 h1:dbKTrvD0klcbBV/h4AWJdMuZogJACoMlvWIWZ5b2xWg=
 github.com/dustin/go-humanize v1.1.0/go.mod h1:hc1CvRkJMsgxqjmjMQF3QNRAZBwY8AXBAzKYoSX9sFI=
 github.com/google/pprof v0.0.0-20261016150608-1facf8f91b50 h1:PlNWJRxu5APSV0pWqfIsZ0qt9OOGHSWfZQ4zvx+WgWs=
