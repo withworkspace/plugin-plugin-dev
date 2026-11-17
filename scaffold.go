@@ -84,8 +84,13 @@ func scaffold(dir, name string) ([]string, error) {
 			return err
 		}
 		rel := strings.TrimSuffix(strings.TrimPrefix(path, "scaffold/"), ".tmpl")
-		if rel == "gitignore" {
+		// What starts with a dot is kept here without it: it would be
+		// left out of what's built in, or read as this repo's own.
+		switch {
+		case rel == "gitignore":
 			rel = ".gitignore"
+		case strings.HasPrefix(rel, "github/"):
+			rel = "." + rel
 		}
 		to := filepath.Join(dir, filepath.FromSlash(rel))
 		if err := os.MkdirAll(filepath.Dir(to), 0o755); err != nil {

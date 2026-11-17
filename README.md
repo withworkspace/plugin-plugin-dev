@@ -7,14 +7,10 @@ It's a plugin like any other, written with [workspace-kit](https://github.com/br
 ## Installing it
 
 ```bash
-git clone https://github.com/withworkspace/plugin-plugin-dev
+ws plugin add withworkspace/plugin-plugin-dev
 ```
 
-```bash
-ws plugin add plugin-plugin-dev
-```
-
-Run the second in a workspace. ws builds the plugin (it needs Go) and starts it. It adds `ws plugin-dev`, and *Plugins* to the web UI's sidebar.
+Run in a workspace. ws downloads this machine's build of the latest release and starts it. It adds `ws plugin-dev`, and *Plugins* to the web UI's sidebar. `ws plugin update` fetches a newer release later.
 
 ## Writing a plugin with it
 
@@ -40,6 +36,23 @@ builds it, links it into the workspace and starts it: *Notes* is in the sidebar,
 | `ws plugin-dev watch [FOLDER]` | Build it and run it in the workspace, again on every save |
 | `ws plugin-dev migration NAME` | The next numbered file in the plugin's `migrations/` |
 | `ws plugin-dev check [FOLDER]` | What it registers, and what's wrong with it |
+
+## Publishing a plugin
+
+A new plugin comes with two workflows for GitHub Actions:
+
+- **`release.yml`**: pushing a tag `v<version>` builds the plugin for macOS and Linux, on Intel and ARM, and publishes the builds as a GitHub release with their checksums. That release is what `ws plugin add owner/repo` installs. The tag has to match `version` in `plugin.toml`.
+- **`pr.yml`**: a pull request is vetted, built and tested.
+
+```bash
+git tag v0.1.0
+```
+
+```bash
+git push origin v0.1.0
+```
+
+A plugin with no release is still installable: ws fetches its source and builds it, which needs Go on the machine installing it.
 
 ## The Plugins page
 
