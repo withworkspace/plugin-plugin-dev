@@ -10,7 +10,7 @@ package main
 import (
 	"embed"
 
-	"github.com/brudil/workspace-kit/plugin"
+	"github.com/withworkspace/plugin"
 )
 
 //go:embed agents.md views all:scaffold

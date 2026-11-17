@@ -16,11 +16,11 @@ import (
 	"text/template"
 	"unicode"
 
-	"github.com/brudil/workspace-kit/plugin"
+	"github.com/withworkspace/plugin"
 )
 
-// kitModule is the Go module plugins are written with.
-const kitModule = "github.com/brudil/workspace-kit"
+// frameworkModule is the Go module plugins are written with.
+const frameworkModule = "github.com/withworkspace/plugin"
 
 var nameRE = regexp.MustCompile(`^[a-z][a-z0-9-]{0,39}$`)
 
@@ -48,7 +48,7 @@ func (d *dev) new(c *plugin.Call) error {
 		// Its module, with the framework at the version this plugin was
 		// built with: the one the template was written for.
 		if err := goModule(c, dir, "plugin-"+name); err != nil {
-			fmt.Fprintf(out, "\nIts Go module isn't set up: %v\nIn %s, run:\n  go mod init plugin-%s\n  go get %s@%s\n  go mod tidy\n", err, dir, name, kitModule, kitVersion())
+			fmt.Fprintf(out, "\nIts Go module isn't set up: %v\nIn %s, run:\n  go mod init plugin-%s\n  go get %s@%s\n  go mod tidy\n", err, dir, name, frameworkModule, frameworkVersion())
 		}
 	}
 	fmt.Fprintf(out, "\nNext:\n  cd %s\n  ws plugin-dev watch\n", dir)
@@ -109,16 +109,16 @@ func title(name string) string {
 	return string(r)
 }
 
-// kitVersion is the version of the framework this plugin was built with,
+// frameworkVersion is the version of the framework this plugin was built with,
 // which is the one its template is written for; "latest" where it was
 // built from a copy of the framework beside it.
-func kitVersion() string {
+func frameworkVersion() string {
 	info, ok := debug.ReadBuildInfo()
 	if !ok {
 		return "latest"
 	}
 	for _, dep := range info.Deps {
-		if dep.Path == kitModule {
+		if dep.Path == frameworkModule {
 			if dep.Replace != nil || dep.Version == "" || dep.Version == "(devel)" {
 				return "latest"
 			}
@@ -133,7 +133,7 @@ func goModule(c *plugin.Call, dir, module string) error {
 	if _, err := exec.LookPath("go"); err != nil {
 		return errors.New("go isn't installed here")
 	}
-	for _, args := range [][]string{{"mod", "init", module}, {"get", kitModule + "@" + kitVersion()}, {"mod", "tidy"}} {
+	for _, args := range [][]string{{"mod", "init", module}, {"get", frameworkModule + "@" + frameworkVersion()}, {"mod", "tidy"}} {
 		fmt.Fprintf(c.Stdout(), "  go %s\n", strings.Join(args, " "))
 		cmd := exec.CommandContext(c.Context(), "go", args...)
 		cmd.Dir = dir
