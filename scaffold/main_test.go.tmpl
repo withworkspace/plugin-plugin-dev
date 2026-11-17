@@ -1,0 +1,22 @@
+package main
+
+import (
+	"strings"
+	"testing"
+
+	"github.com/brudil/workspace-kit/plugintest"
+)
+
+// The plugin, run inside the test against a stand-in for ws.
+func TestPlugin(t *testing.T) {
+	ws := plugintest.New(t, files, setup)
+
+	if out := ws.Run("say", "there"); out.Exit != 0 || out.Stdout != "Hello, there\n" {
+		t.Errorf("say: exit %d, %q", out.Exit, out.Stdout)
+	}
+
+	page := ws.Get("/")
+	if page.Status != 200 || !strings.Contains(page.Body, "Hello, workspace") {
+		t.Errorf("the page: %d\n%s", page.Status, page.Body)
+	}
+}

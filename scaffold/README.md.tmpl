@@ -1,0 +1,29 @@
+# plugin-[[.Name]]
+
+A ws plugin, written with [workspace-kit](https://github.com/brudil/workspace-kit).
+
+```bash
+ws plugin-dev watch
+```
+
+Run in this folder, it builds the plugin, runs it in the workspace, and does both again on each save. Its page is in the web UI's sidebar, and its commands are `ws [[.Name]] …`.
+
+| | |
+|---|---|
+| `main.go` | What the plugin declares: its config, its view, its commands |
+| `views/` | Its pages, as Go templates |
+| `migrations/` | Its database, one `.sql` file per change (`ws plugin-dev migration <name>`) |
+| `agents.md` | What agents are told of it |
+| `plugin.toml` | Its name and version, and how it's built and started |
+
+```bash
+ws plugin-dev check
+```
+
+says what it registers, and anything wrong with it.
+
+```bash
+go test ./...
+```
+
+runs it against a stand-in for ws.

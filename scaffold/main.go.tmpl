@@ -1,0 +1,74 @@
+// ws-[[.Name]] is a ws plugin: a page in the web UI, commands after
+// `ws [[.Name]]`, and a guide that tells agents they're there.
+//
+// `ws plugin-dev watch` builds and runs it in a workspace, again on each
+// save.
+package main
+
+import (
+	"context"
+	"embed"
+
+	"github.com/brudil/workspace-kit/plugin"
+)
+
+// What's built into the executable: the guide for agents, the database's
+// migrations, and the pages.
+//
+//go:embed agents.md migrations views
+var files embed.FS
+
+func main() {
+	p := plugin.New(files)
+	setup(p)
+	p.Run()
+}
+
+// setup declares the plugin: what it declares is what ws is told it adds.
+// It's apart from main so a test can declare the same plugin.
+func setup(p *plugin.Plugin) {
+	p.Describe("[[.Title]]")
+
+	// Config: declared and read in one. `ws plugin config [[.Name]]` sets it.
+	greeting := p.Config.String("greeting", "Greeting", plugin.Default("Hello"))
+
+	// The plugin's own database: migrations/*.sql are applied before
+	// anything here runs.
+	visits := func(ctx context.Context) (n int, err error) {
+		err = p.DB().QueryRowContext(ctx, `select count(*) from visits`).Scan(&n)
+		return n, err
+	}
+
+	// The view: an entry in the sidebar, and its pages. Each page is a
+	// template in views/, given what its function returns.
+	p.View("[[.Title]]", plugin.Icon("sparkle"), func(v *plugin.View) {
+		v.Page("/", "index.html", func(r *plugin.Request) (any, error) {
+			if _, err := p.DB().ExecContext(r.Context(), `insert into visits values (unixepoch())`); err != nil {
+				return nil, err
+			}
+			n, err := visits(r.Context())
+			return map[string]any{"Greeting": greeting.Get(), "Visits": n}, err
+		})
+	})
+
+	// ws [[.Name]] say [NAME]
+	p.Command("say", "Says the greeting", func(c *plugin.Call) error {
+		name := "workspace"
+		if c.Arg(0) != "" {
+			name = c.Arg(0)
+		}
+		return c.Say(greeting.Get() + ", " + name)
+	}).Args("[NAME]")
+
+	// ws [[.Name]] visits: a line for a person, JSON for -f json, markdown
+	// for an agent (-f llm), from the one value.
+	p.Command("visits", "How often the page has been seen", func(c *plugin.Call) error {
+		n, err := visits(c.Context())
+		if err != nil {
+			return err
+		}
+		return c.Show(struct {
+			Visits int `json:"visits"`
+		}{n})
+	})
+}
