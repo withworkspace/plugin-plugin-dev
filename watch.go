@@ -12,7 +12,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/brudil/workspace-kit/plugin"
+	"github.com/withworkspace/plugin"
 )
 
 // session is a plugin being watched: its folder, and how its last build

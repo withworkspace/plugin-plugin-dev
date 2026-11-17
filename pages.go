@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/brudil/workspace-kit/plugin"
+	"github.com/withworkspace/plugin"
 )
 
 // row is one of the workspace's plugins on the Plugins page.

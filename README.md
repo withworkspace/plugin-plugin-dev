@@ -2,7 +2,7 @@
 
 The ws plugin for writing ws plugins. It starts one from a template, builds it and runs it in your workspace on every save, and shows how each of the workspace's plugins stands.
 
-It's a plugin like any other, written with [workspace-kit](https://github.com/brudil/workspace-kit).
+It's a plugin like any other, written with [the plugin framework](https://github.com/withworkspace/plugin).
 
 ## Installing it
 
@@ -69,7 +69,7 @@ It asks ws for what it needs as anything else does, by running ws's commands:
 | What's wrong with one | `ws plugin check FOLDER` |
 | To start one afresh | `ws plugin restart NAME` |
 
-Everything else is its own: the template (`scaffold/`), noticing a save, and remembering how each build went. A new plugin is given the version of workspace-kit this one was built with, which is the version its template is written for.
+Everything else is its own: the template (`scaffold/`), noticing a save, and remembering how each build went. A new plugin is given the version of the framework this one was built with, which is the version its template is written for.
 
 It can't watch itself: running what it built would stop what's watching. To work on it, build it and run `ws plugin restart plugin-dev`.
 

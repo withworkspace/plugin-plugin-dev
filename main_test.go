@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/brudil/workspace-kit/plugintest"
+	"github.com/withworkspace/plugin/plugintest"
 )
 
 // fakeWS is a script that answers as ws would to what this plugin asks of

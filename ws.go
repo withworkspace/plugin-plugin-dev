@@ -10,7 +10,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/brudil/workspace-kit/plugin"
+	"github.com/withworkspace/plugin"
 )
 
 // dev is the plugin's state, shared by its commands and its pages: what's
