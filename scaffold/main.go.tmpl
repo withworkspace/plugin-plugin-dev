@@ -1,4 +1,4 @@
-// ws-[[.Name]] is a ws plugin: a page in the web UI, commands after
+// ws-[[.Name]] is a ws plugin: an app in the web UI, commands after
 // `ws [[.Name]]`, and a guide that tells agents they're there.
 //
 // `ws plugin-dev watch` builds and runs it in a workspace, again on each
@@ -8,14 +8,17 @@ package main
 import (
 	"context"
 	"embed"
+	"encoding/json"
+	"net/http"
 
 	"github.com/withworkspace/plugin"
 )
 
 // What's built into the executable: the guide for agents, the database's
-// migrations, and the pages.
+// migrations, and the app as built (ui/dist, from ui/). The built app is
+// committed, so Go alone builds the plugin.
 //
-//go:embed agents.md migrations views
+//go:embed agents.md migrations ui/dist
 var files embed.FS
 
 func main() {
@@ -38,17 +41,36 @@ func setup(p *plugin.Plugin) {
 		err = p.DB().QueryRowContext(ctx, `select count(*) from visits`).Scan(&n)
 		return n, err
 	}
+	visit := func(ctx context.Context) error {
+		_, err := p.DB().ExecContext(ctx, `insert into visits values (unixepoch())`)
+		return err
+	}
 
-	// The view: an entry in the sidebar, and its pages. Each page is a
-	// template in views/, given what its function returns.
-	p.View("[[.Title]]", plugin.Icon("sparkle"), func(v *plugin.View) {
-		v.Page("/", "index.html", func(r *plugin.Request) (any, error) {
-			if _, err := p.DB().ExecContext(r.Context(), `insert into visits values (unixepoch())`); err != nil {
-				return nil, err
-			}
-			n, err := visits(r.Context())
-			return map[string]any{"Greeting": greeting.Get(), "Visits": n}, err
-		})
+	// The app, and its entry in ws's sidebar. ws serves the page and loads
+	// the app in it (ui/src/app.ts): the plugin has no HTML.
+	p.UI("ui/dist")
+	p.View("[[.Title]]", plugin.Icon("sparkle"))
+
+	// What the app asks, as JSON: the greeting, and how often the app has
+	// been seen. The app fetches it at ws.api("/api/visits").
+	seen := func(w http.ResponseWriter, r *http.Request) {
+		n, err := visits(r.Context())
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]any{"greeting": greeting.Get(), "visits": n}) //nolint:errcheck // the app has gone
+	}
+	p.HandleFunc("GET /api/visits", seen)
+
+	// Each look at the app is counted: it posts here as it loads.
+	p.HandleFunc("POST /api/visits", func(w http.ResponseWriter, r *http.Request) {
+		if err := visit(r.Context()); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		seen(w, r)
 	})
 
 	// ws [[.Name]] say [NAME]
@@ -61,8 +83,16 @@ func setup(p *plugin.Plugin) {
 	}).Args("[NAME]")
 
 	// ws [[.Name]] visits: a line for a person, JSON for -f json, markdown
-	// for an agent (-f llm), from the one value.
-	p.Command("visits", "How often the page has been seen", func(c *plugin.Call) error {
+	// for an agent (-f llm), from the one value. With --add it counts one
+	// more first, and tells the open app that what it shows is stale
+	// (p.Changed): the app asks again, and its count goes up.
+	p.Command("visits", "How often the app has been seen", func(c *plugin.Call) error {
+		if c.Flag("add") {
+			if err := visit(c.Context()); err != nil {
+				return err
+			}
+			p.Changed()
+		}
 		n, err := visits(c.Context())
 		if err != nil {
 			return err
@@ -70,5 +100,5 @@ func setup(p *plugin.Plugin) {
 		return c.Show(struct {
 			Visits int `json:"visits"`
 		}{n})
-	})
+	}).Flag("add", "count one more, and tell the open app")
 }

@@ -2,6 +2,8 @@ package main
 
 import (
 	"bytes"
+	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -25,7 +27,7 @@ const frameworkModule = "github.com/withworkspace/plugin"
 var nameRE = regexp.MustCompile(`^[a-z][a-z0-9-]{0,39}$`)
 
 // new is ws plugin-dev new NAME: a new plugin from the template, with its
-// Go module set up so it builds.
+// app built and its Go module set up, so it builds.
 func (d *dev) new(c *plugin.Call) error {
 	name := c.Arg(0)
 	if name == "" {
@@ -44,15 +46,107 @@ func (d *dev) new(c *plugin.Call) error {
 	for _, f := range files {
 		fmt.Fprintf(out, "  %s\n", f)
 	}
+	if !c.Flag("no-build") {
+		// Its app, built into ui/dist: the plugin is built with what's
+		// there, so it doesn't build until its app has been.
+		ui := filepath.Join(dir, appFolder)
+		fmt.Fprintf(out, "\nIts app, built into %s:\n", appBuilt)
+		step := func(args string) { fmt.Fprintf(out, "  npm %s\n", args) }
+		if text, err := buildApp(c.Context(), ui, step); err != nil {
+			if text != "" {
+				fmt.Fprintf(out, "%s\n", indent(text))
+			}
+			fmt.Fprintf(out, "\nIts app isn't built: %v%s\nThe plugin is built with its app, so it won't build until it is. In %s, run:\n  npm install\n  npm run build\n", err, oldNPM(c.Context()), ui)
+		}
+	}
 	if !c.Flag("no-module") {
 		// Its module, with the framework at the version this plugin was
 		// built with: the one the template was written for.
+		fmt.Fprintln(out, "\nIts Go module:")
 		if err := goModule(c, dir, "plugin-"+name); err != nil {
 			fmt.Fprintf(out, "\nIts Go module isn't set up: %v\nIn %s, run:\n  go mod init plugin-%s\n  go get %s@%s\n  go mod tidy\n", err, dir, name, frameworkModule, frameworkVersion())
 		}
 	}
 	fmt.Fprintf(out, "\nNext:\n  cd %s\n  ws plugin-dev watch\n", dir)
 	return nil
+}
+
+// indent is text, each line set in under what it follows.
+func indent(text string) string {
+	return "    " + strings.ReplaceAll(text, "\n", "\n    ")
+}
+
+// The folder of a plugin's app, and where it's built into.
+const (
+	appFolder = "ui"
+	appBuilt  = "ui/dist"
+)
+
+// buildApp builds a plugin's app, in its folder ui, into ui/dist: npm run
+// build, after npm install where what it's built with isn't there yet.
+// step is told each npm command as it's run. It returns what the command
+// that failed printed, with the error.
+func buildApp(ctx context.Context, ui string, step func(args string)) (string, error) {
+	if _, err := exec.LookPath("npm"); err != nil {
+		return "", errors.New("npm isn't installed here (it comes with Node)")
+	}
+	steps := [][]string{{"run", "build"}}
+	if _, err := os.Stat(filepath.Join(ui, "node_modules")); err != nil {
+		steps = [][]string{{"install"}, {"run", "build"}}
+	}
+	for _, args := range steps {
+		if step != nil {
+			step(strings.Join(args, " "))
+		}
+		cmd := exec.CommandContext(ctx, "npm", args...)
+		cmd.Dir = ui
+		if text, err := cmd.CombinedOutput(); err != nil {
+			return strings.TrimSpace(string(text)), fmt.Errorf("npm %s failed", strings.Join(args, " "))
+		}
+	}
+	return "", nil
+}
+
+// oldNPM says, where the npm here is older than 11, that it's likely why
+// the app didn't build: npm 10, which Node 22 comes with, fails to
+// install what the app is tested with ("Cannot read properties of
+// null"). "" where npm is new enough, or doesn't say.
+func oldNPM(ctx context.Context) string {
+	out, err := exec.CommandContext(ctx, "npm", "--version").Output()
+	if err != nil {
+		return ""
+	}
+	version := strings.TrimSpace(string(out))
+	major, _, _ := strings.Cut(version, ".")
+	if n, err := strconv.Atoi(major); err != nil || n >= 11 {
+		return ""
+	}
+	return "\nThe npm here is " + version + ", and the app needs npm 11 or later, which comes with Node 24."
+}
+
+// appDeps are the packages plugin-dev's own app is built with, and the
+// version of each: what a new plugin's app is given, so the two move
+// together.
+func appDeps() (map[string]string, error) {
+	data, err := files.ReadFile("ui/package.json")
+	if err != nil {
+		return nil, err
+	}
+	var pkg struct {
+		Dependencies    map[string]string `json:"dependencies"`
+		DevDependencies map[string]string `json:"devDependencies"`
+	}
+	if err := json.Unmarshal(data, &pkg); err != nil {
+		return nil, fmt.Errorf("ui/package.json: %w", err)
+	}
+	deps := map[string]string{}
+	for name, version := range pkg.DevDependencies {
+		deps[name] = version
+	}
+	for name, version := range pkg.Dependencies {
+		deps[name] = version
+	}
+	return deps, nil
 }
 
 // scaffold writes a new plugin called name into dir, which must not hold
@@ -65,8 +159,22 @@ func scaffold(dir, name string) ([]string, error) {
 		return nil, fmt.Errorf("%s has things in it already", dir)
 	}
 	data := struct{ Name, Title string }{name, title(name)}
+	deps, err := appDeps()
+	if err != nil {
+		return nil, err
+	}
+	funcs := template.FuncMap{
+		// dep is the version of a package this plugin's own app is built
+		// with, for the new app's package.json.
+		"dep": func(name string) (string, error) {
+			if v := deps[name]; v != "" {
+				return v, nil
+			}
+			return "", fmt.Errorf("plugin-dev's own ui/package.json has no %s to give the new app", name)
+		},
+	}
 	var written []string
-	err := fs.WalkDir(files, "scaffold", func(path string, e fs.DirEntry, err error) error {
+	err = fs.WalkDir(files, "scaffold", func(path string, e fs.DirEntry, err error) error {
 		if err != nil || e.IsDir() {
 			return err
 		}
@@ -74,8 +182,8 @@ func scaffold(dir, name string) ([]string, error) {
 		if err != nil {
 			return err
 		}
-		// [[ ]], as a plugin's pages are Go templates themselves, with {{ }}.
-		t, err := template.New(path).Delims("[[", "]]").Parse(string(src))
+		// [[ ]], as a workflow's own ${{ }} is left as it is.
+		t, err := template.New(path).Delims("[[", "]]").Funcs(funcs).Parse(string(src))
 		if err != nil {
 			return err
 		}

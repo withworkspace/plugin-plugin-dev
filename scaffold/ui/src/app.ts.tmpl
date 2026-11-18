@@ -1,0 +1,143 @@
+// The [[.Name]] plugin's app: two screens, the greeting (/) and what this
+// is (/about). ws serves the page this runs in, with its theme already
+// there and an empty #root. This connects to ws, asks the plugin for what
+// it shows, and renders into #root.
+//
+// It's built into ui/dist (npm run build), which is committed: the plugin
+// is built with what's there.
+
+import { type Client, type ConnectOptions, connect } from "@withworkspace/ui-lib";
+
+// What the plugin answers at /api/visits (main.go).
+interface Visits {
+  greeting: string;
+  visits: number;
+}
+
+// h makes an element: its properties, then what's in it.
+function h<K extends keyof HTMLElementTagNameMap>(tag: K, props: Partial<HTMLElementTagNameMap[K]> = {}, ...children: (Node | string)[]): HTMLElementTagNameMap[K] {
+  const el = Object.assign(document.createElement(tag), props);
+  el.append(...children);
+  return el;
+}
+
+const said = (err: unknown) => (err instanceof Error ? err.message : String(err));
+
+/**
+ * start connects to ws and shows the app in the page's #root. It resolves
+ * with the client once the first screen is up, or with nothing where
+ * there's no ws to connect to, which the page then says.
+ */
+export async function start(options: ConnectOptions = {}): Promise<Client | undefined> {
+  let ws: Client;
+  try {
+    ws = await connect(options);
+  } catch (err) {
+    // A ProtocolError (ws and this app speak no frame protocol version in
+    // common) or a NoHostError (the page isn't in ws's frame): its
+    // message says which, and what to update.
+    (document.getElementById("root") ?? document.body).replaceChildren(h("main", {}, h("p", { className: "error" }, said(err))));
+    return undefined;
+  }
+
+  let seen: Visits | undefined; // what the plugin last answered
+  let failed = ""; // why it didn't
+
+  // The plugin's own HTTP is at ws.api(path): p.HandleFunc("GET /api/visits")
+  // in main.go answers this. What goes wrong there is said in plain text.
+  async function ask(method = "GET") {
+    try {
+      const res = await fetch(ws.api("/api/visits"), { method });
+      if (!res.ok) throw new Error((await res.text()).trim() || `/api/visits answered ${res.status}`);
+      seen = (await res.json()) as Visits;
+      failed = "";
+    } catch (err) {
+      failed = said(err);
+    }
+    render();
+  }
+
+  // A screen of the app's own, as a link's address: the page's address is
+  // under ws.base.
+  const to = (path: string) => ws.base + path;
+
+  // The screen at ws.path: its title, and what's on it.
+  function screen(): { title: string; body: (Node | string)[] } {
+    const path = ws.path.split("?")[0];
+    if (path === "/") {
+      const count = seen ? `Seen ${seen.visits} ${seen.visits === 1 ? "time" : "times"}.` : "Loading…";
+      return {
+        title: "[[.Title]]",
+        body: [
+          h("h1", {}, seen ? `${seen.greeting}, workspace` : "[[.Title]]"),
+          failed ? h("p", { className: "error" }, failed) : h("p", { className: "dim" }, count),
+          h("p", {}, h("a", { href: to("/about") }, "About this plugin")),
+        ],
+      };
+    }
+    if (path === "/about") {
+      return {
+        title: "About · [[.Title]]",
+        body: [
+          h("p", {}, h("a", { href: to("/") }, "← [[.Title]]")),
+          h("h1", {}, "About"),
+          h("p", {}, `This is the ${ws.name} plugin's app, in a page ws serves. It talks to ws in frame protocol ${ws.version}, and ws's theme is ${ws.theme.scheme}.`),
+          h("p", { className: "dim" }, "Its screens are in ui/src/app.ts, and what it asks the plugin is in main.go."),
+        ],
+      };
+    }
+    return { title: "[[.Title]]", body: [h("h1", {}, "Nothing here"), h("p", {}, `There's nothing at ${path}. `, h("a", { href: to("/") }, "[[.Title]]"))] };
+  }
+
+  function render() {
+    const { title, body } = screen();
+    ws.setTitle(title); // the tab's title
+    ws.root.replaceChildren(h("main", {}, ...body));
+  }
+
+  // Where the page's own address is, as a path in the plugin.
+  const here = () => (location.pathname.slice(ws.base.length) || "/") + location.search;
+
+  // ws's address and the app's are kept in step, both ways.
+  //
+  // The app moves: a link to a screen of its own goes there without
+  // loading the page again. The page's history gains an entry, and
+  // ws.setPath tells ws, whose address follows. (A link with data-ws,
+  // <a data-ws="/missions/…">, is ui-lib's: it goes to a page of ws's.)
+  ws.root.addEventListener("click", (e) => {
+    const a = (e.target as Element).closest?.("a");
+    if (!(a instanceof HTMLAnchorElement) || a.dataset.ws !== undefined || e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return;
+    const path = a.pathname + a.search;
+    if (a.origin !== location.origin || !(path === ws.base || path.startsWith(`${ws.base}/`))) return;
+    e.preventDefault();
+    history.pushState(null, "", a.href);
+    ws.setPath(here());
+    render();
+  });
+  // Back and forward in the page's own history.
+  window.addEventListener("popstate", () => {
+    ws.setPath(here());
+    render();
+  });
+  // ws moves: its address changed without the app (the sidebar, a link in
+  // ws, back and forward there). The app goes there, replacing its own
+  // history entry, so one move is one step back.
+  ws.onNavigate((path) => {
+    history.replaceState(null, "", ws.base + path);
+    render();
+  });
+
+  // The plugin said what this shows is stale (p.Changed() in main.go, as
+  // `ws [[.Name]] visits --add` does, or the greeting changed in Settings):
+  // ask again.
+  ws.onChanged(() => void ask());
+  // The theme is applied already; the About screen says which it is.
+  ws.onTheme(render);
+
+  // The page's own address starts where ws's is.
+  if (here() !== ws.path) history.replaceState(null, "", ws.base + ws.path);
+  render();
+  // Each look at the app is counted, as it loads.
+  await ask("POST");
+  return ws;
+}

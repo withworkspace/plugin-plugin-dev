@@ -1,0 +1,19 @@
+{
+  "name": "ws-plugin-dev-ui",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc && esbuild app=src/main.ts app=src/app.css --bundle --format=esm --target=es2023 --minify --outdir=dist",
+    "typecheck": "tsc",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@withworkspace/ui-lib": "^0.1.0"
+  },
+  "devDependencies": {
+    "esbuild": "0.28.2",
+    "happy-dom": "21.0.4",
+    "typescript": "7.0.2",
+    "vitest": "5.1.0"
+  }
+}

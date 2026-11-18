@@ -15,6 +15,30 @@ jobs:
         with:
           go-version-file: go.mod
 
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+
+      # The app: its test, and that what's committed in ui/dist is what
+      # its source builds. The plugin is built with what's committed.
+      - run: npm ci
+        working-directory: ui
+
+      - run: npm test
+        working-directory: ui
+
+      - run: npm run build
+        working-directory: ui
+
+      - name: Check the built app is committed
+        run: |
+          if [ -n "$(git status --porcelain -- ui/dist)" ]; then
+            echo "ui/dist isn't what ui/src builds: run npm run build in ui/, and commit ui/dist"
+            git status --short -- ui/dist
+            git diff -- ui/dist | head -50
+            exit 1
+          fi
+
       - run: go vet ./...
 
       - name: Check formatting

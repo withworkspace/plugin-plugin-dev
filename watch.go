@@ -16,7 +16,7 @@ import (
 )
 
 // session is a plugin being watched: its folder, and how its last build
-// went. The pages show it, so it's read under dev's lock.
+// went. The app shows it, so it's read under dev's lock.
 type session struct {
 	Name   string
 	Folder string
@@ -48,7 +48,8 @@ func pluginName(dir string) (string, error) {
 
 // watch is ws plugin-dev watch [FOLDER]: build the plugin and run it in
 // the workspace, then again whenever a file of it changes, until the
-// command's stopped. What the plugin logs is shown as it's written.
+// command's stopped. Its app (ui/) is built first when it's a file of the
+// app that changed. What the plugin logs is shown as it's written.
 func (d *dev) watch(c *plugin.Call) error {
 	dir := folder(c, c.Arg(0))
 	name, err := pluginName(dir)
@@ -72,7 +73,25 @@ func (d *dev) watch(c *plugin.Call) error {
 	}
 	ctx := c.Context()
 
-	build := func() string {
+	// exe is what the last build wrote.
+	var exe string
+	// build builds the plugin and runs what was built, after building its
+	// app into ui/dist if app says to: the plugin is built with what's
+	// there.
+	build := func(app bool) {
+		defer d.p.Changed() // the Plugins view shows how it went
+		if app {
+			say("building %s's app", name)
+			text, err := buildApp(ctx, filepath.Join(dir, appFolder), nil)
+			if err != nil {
+				if text != "" {
+					fmt.Fprintln(out, "          "+strings.ReplaceAll(text, "\n", "\n          "))
+				}
+				say("its app didn't build (%v): what was running still is", err)
+				d.built(s, added{BuildOutput: text, Error: "its app didn't build: " + err.Error()})
+				return
+			}
+		}
 		say("building %s", name)
 		res, err := d.add(ctx, dir)
 		if err != nil && res.Name == "" {
@@ -92,22 +111,23 @@ func (d *dev) watch(c *plugin.Call) error {
 		default:
 			say("running")
 		}
-		d.p.Changed() // the Plugins page shows how it went
-		return res.Executable
+		exe = res.Executable
 	}
 
 	// What it logs, from here on.
 	log := &follower{path: filepath.Join(d.p.Root(), ".ws", "plugins", name, "data", "plugin.log")}
 	log.skipToEnd()
 
-	exe := build()
+	// An app that has never been built is built first: the plugin
+	// doesn't build without it.
+	build(hasApp(dir) && !exists(filepath.Join(dir, filepath.FromSlash(appBuilt), "app.js")))
 	say("watching %s: Ctrl-C to stop", dir)
 
 	// The folder's read on a tick, not listened to: it's small, and this
 	// sees every editor's way of saving. A save is often several writes,
 	// so a build follows the first tick on which nothing more changed.
 	before := snapshot(dir, exe)
-	changed := false
+	changed, app := false, false
 	tick := time.NewTicker(400 * time.Millisecond)
 	defer tick.Stop()
 	for {
@@ -121,12 +141,13 @@ func (d *dev) watch(c *plugin.Call) error {
 		}
 		now := snapshot(dir, exe)
 		if !same(before, now) {
+			app = app || appChanged(dir, before, now)
 			before, changed = now, true
 			continue
 		}
 		if changed {
-			changed = false
-			exe = build()
+			build(app)
+			changed, app = false, false
 			before = snapshot(dir, exe) // what the build itself wrote isn't a save
 		}
 	}
@@ -223,6 +244,44 @@ func notSource(name string) bool {
 	}
 	for _, ext := range []string{".swp", ".swx", ".tmp", ".db", ".db-wal", ".db-shm", ".log"} {
 		if strings.HasSuffix(name, ext) {
+			return true
+		}
+	}
+	return false
+}
+
+// hasApp says whether the plugin in dir has an app to build.
+func hasApp(dir string) bool {
+	return exists(filepath.Join(dir, appFolder, "package.json"))
+}
+
+func exists(path string) bool {
+	_, err := os.Stat(path)
+	return err == nil
+}
+
+// appChanged says whether what differs between two snapshots of the
+// plugin in dir is its app's source: a file under ui/ that isn't one the
+// app's build writes (ui/dist). node_modules isn't in a snapshot at all.
+func appChanged(dir string, a, b map[string]stamp) bool {
+	if !hasApp(dir) {
+		return false
+	}
+	source := func(path string) bool {
+		rel, err := filepath.Rel(dir, path)
+		if err != nil {
+			return false
+		}
+		rel = filepath.ToSlash(rel)
+		return strings.HasPrefix(rel, appFolder+"/") && !strings.HasPrefix(rel, appBuilt+"/")
+	}
+	for path, s := range a {
+		if b[path] != s && source(path) {
+			return true
+		}
+	}
+	for path := range b {
+		if _, was := a[path]; !was && source(path) {
 			return true
 		}
 	}

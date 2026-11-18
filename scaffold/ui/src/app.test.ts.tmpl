@@ -1,0 +1,69 @@
+// @vitest-environment happy-dom
+// @vitest-environment-options { "url": "http://ws.test/plugin-frame/[[.Name]]/" }
+
+// The app, run in a page as ws's shell serves it, against ui-lib's fake
+// host (ws, without ws) and a stand-in for the plugin's API.
+
+import { fakeHost } from "@withworkspace/ui-lib/testing";
+import { expect, test, vi } from "vitest";
+import { start } from "./app";
+
+test("it greets, counts, and keeps its address in step with ws's", async () => {
+  document.body.innerHTML = '<div id="root"></div>';
+  const root = document.getElementById("root")!;
+
+  // The plugin: each POST is a look, counted.
+  let visits = 0;
+  const asked: string[] = [];
+  vi.stubGlobal("fetch", async (url: string, init?: RequestInit) => {
+    const method = init?.method ?? "GET";
+    asked.push(`${method} ${url}`);
+    if (method === "POST") visits++;
+    return Response.json({ greeting: "Hello", visits });
+  });
+
+  const host = fakeHost({ name: "[[.Name]]" });
+  const ws = (await start({ host: host.window }))!;
+  // The tab's title, as the app last told ws.
+  const title = () => host.sent.findLast((m) => m.type === "ws:title")?.title;
+
+  // The first screen: the greeting and the count, asked of the plugin's
+  // own HTTP, and the tab's title.
+  expect(asked).toEqual(["POST /plugins/[[.Name]]/api/visits"]);
+  expect(root.querySelector("h1")?.textContent).toBe("Hello, workspace");
+  expect(root.textContent).toContain("Seen 1 time.");
+  await vi.waitFor(() => expect(title()).toBe("[[.Title]]"));
+
+  // ws:changed, which the plugin's p.Changed() sends: the app asks again.
+  visits = 2;
+  host.changed();
+  await vi.waitFor(() => expect(root.textContent).toContain("Seen 2 times."));
+  expect(asked.at(-1)).toBe("GET /plugins/[[.Name]]/api/visits");
+
+  // The app moves, by a link of its own: ws is told where it is.
+  root.querySelector("a")!.click();
+  expect((await host.next("ws:path")).path).toBe("/about");
+  expect(location.pathname).toBe("/plugin-frame/[[.Name]]/about");
+  expect(root.querySelector("h1")?.textContent).toBe("About");
+  await vi.waitFor(() => expect(title()).toBe("About · [[.Title]]"));
+
+  // ws moves (its sidebar's entry, say): the app follows.
+  host.navigate("/");
+  await vi.waitFor(() => expect(root.querySelector("h1")?.textContent).toBe("Hello, workspace"));
+  expect(location.pathname).toBe("/plugin-frame/[[.Name]]/");
+
+  ws.close();
+  host.close();
+  vi.unstubAllGlobals();
+});
+
+test("with a ws that speaks no frame protocol it does, it says which to update", async () => {
+  document.body.innerHTML = '<div id="root"></div>';
+  const host = fakeHost({ name: "[[.Name]]", versions: [2] });
+  vi.spyOn(console, "error").mockImplementation(() => {});
+
+  expect(await start({ host: host.window })).toBeUndefined();
+  expect(document.getElementById("root")!.textContent).toBe("[[.Name]] speaks frame protocol 1, and this ws speaks 2. Update the plugin.");
+
+  host.close();
+});

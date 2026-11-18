@@ -13,7 +13,7 @@ import (
 	"github.com/withworkspace/plugin"
 )
 
-// dev is the plugin's state, shared by its commands and its pages: what's
+// dev is the plugin's state, shared by its commands and its app: what's
 // being watched, and what each plugin's last check said.
 type dev struct {
 	p *plugin.Plugin
@@ -25,9 +25,9 @@ type dev struct {
 
 // check is what ws plugin check last said of a plugin.
 type check struct {
-	At     time.Time
-	Output string
-	Failed bool
+	At     time.Time `json:"at"`
+	Output string    `json:"output"`
+	Failed bool      `json:"failed"` // it found something wrong
 }
 
 // added is what ws plugin add -f json prints: how building a plugin and
@@ -94,19 +94,6 @@ func (s status) Word() string {
 		return s.Registration.Commands.Name
 	}
 	return s.Name
-}
-
-// Tone is how its state reads, for a pill.
-func (s status) Tone() string {
-	switch s.State {
-	case "ready":
-		return "good"
-	case "setup":
-		return "warn"
-	case "failed":
-		return "bad"
-	}
-	return ""
 }
 
 // GuideLines is how long its guide for agents is.
