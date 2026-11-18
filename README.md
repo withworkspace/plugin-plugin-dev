@@ -129,3 +129,5 @@ cd ui && npm test
 A release is a tag `v<version>` on `main`, where `<version>` is `version` in `plugin.toml`: `release.yml` builds it for each platform and publishes the builds. It depends on a released version of the framework (`go.mod`), never a commit of its `main`.
 
 v0.2.0 is the first on the framework's v0.2.0, where a plugin's pages became an app: the plugins it starts have an app, and so does it.
+
+v0.3.0 is on the framework's v0.4.0: its app and a new plugin's are Preact apps, ws keeps their history, and a new plugin starts on v0.4.0.
