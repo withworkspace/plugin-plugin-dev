@@ -8,7 +8,7 @@ import { fakeHost } from "@withworkspace/ui-lib/testing";
 import { expect, test, vi } from "vitest";
 import { start } from "./app";
 
-test("it greets, counts, and keeps its address in step with ws's", async () => {
+test("it greets, counts, and goes where ws says it is", async () => {
   document.body.innerHTML = '<div id="root"></div>';
   const root = document.getElementById("root")!;
 
@@ -29,8 +29,8 @@ test("it greets, counts, and keeps its address in step with ws's", async () => {
 
   // The first screen: the greeting and the count, asked of the plugin's
   // own HTTP, and the tab's title.
+  await vi.waitFor(() => expect(root.querySelector("h1")?.textContent).toBe("Hello, workspace"));
   expect(asked).toEqual(["POST /plugins/[[.Name]]/api/visits"]);
-  expect(root.querySelector("h1")?.textContent).toBe("Hello, workspace");
   expect(root.textContent).toContain("Seen 1 time.");
   await vi.waitFor(() => expect(title()).toBe("[[.Title]]"));
 
@@ -40,11 +40,14 @@ test("it greets, counts, and keeps its address in step with ws's", async () => {
   await vi.waitFor(() => expect(root.textContent).toContain("Seen 2 times."));
   expect(asked.at(-1)).toBe("GET /plugins/[[.Name]]/api/visits");
 
-  // The app moves, by a link of its own: ws is told where it is.
-  root.querySelector("a")!.click();
-  expect((await host.next("ws:path")).path).toBe("/about");
+  // A link of the app's own is to ws's address for the screen: a click
+  // asks ws to go there, and the app follows when ws says it has.
+  const link = root.querySelector("a")!;
+  expect(link.getAttribute("href")).toBe("/x/[[.Name]]/about");
+  link.click();
+  expect((await host.next("ws:go")).path).toBe("/x/[[.Name]]/about");
+  await vi.waitFor(() => expect(root.querySelector("h1")?.textContent).toBe("About"));
   expect(location.pathname).toBe("/plugin-frame/[[.Name]]/about");
-  expect(root.querySelector("h1")?.textContent).toBe("About");
   await vi.waitFor(() => expect(title()).toBe("About · [[.Title]]"));
 
   // ws moves (its sidebar's entry, say): the app follows.

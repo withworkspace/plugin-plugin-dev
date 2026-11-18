@@ -60,6 +60,7 @@ test("the list says how each plugin stands, and a plugin's name goes to it", asy
     "GET /plugins/plugin-dev/api/plugins/notes": detail,
   });
   expect((await host.next("ws:title")).title).toBe("Plugins");
+  await vi.waitFor(() => expect(root.querySelectorAll("tbody tr")).toHaveLength(2));
   const rows = [...root.querySelectorAll("tbody tr")].map((tr) => tr.textContent);
   expect(rows[0]).toContain("jira 0.3.0");
   expect(rows[0]).toContain("needs site, token");
@@ -67,13 +68,16 @@ test("the list says how each plugin stands, and a plugin's name goes to it", asy
   expect(rows[1]).toContain("linked to /src/plugin-notes");
   expect(root.querySelector(".pill.warn")?.textContent).toBe("setup");
 
-  // Its name is a link to its own screen: the app goes there without
-  // loading the page again, and tells ws where it is.
+  // Its name is a link to its own screen, at ws's address for it: a click
+  // asks ws to go there, and the app follows when ws says it has. The
+  // frame's own address follows too, adding no history.
   const link = [...root.querySelectorAll("a")].find((a) => a.textContent === "notes")!;
-  expect(link.getAttribute("href")).toBe("/plugin-frame/plugin-dev/p/notes");
+  expect(link.getAttribute("href")).toBe("/x/plugin-dev/p/notes");
+  const length = history.length;
   link.click();
-  expect((await host.next("ws:path")).path).toBe("/p/notes");
-  expect(location.pathname).toBe("/plugin-frame/plugin-dev/p/notes");
+  expect((await host.next("ws:go")).path).toBe("/x/plugin-dev/p/notes");
+  await vi.waitFor(() => expect(location.pathname).toBe("/plugin-frame/plugin-dev/p/notes"));
+  expect(history.length).toBe(length);
   await vi.waitFor(() => expect(root.textContent).toContain("ws notes say [NAME]"));
   expect(asked).toEqual(["GET /plugins/plugin-dev/api/plugins", "GET /plugins/plugin-dev/api/plugins/notes"]);
   await vi.waitFor(() => expect(host.sent.filter((m) => m.type === "ws:title").at(-1)).toEqual({ type: "ws:title", title: "notes · Plugins" }));
@@ -84,7 +88,7 @@ test("a plugin's screen, loaded at its own address, checks it and asks again whe
     "GET /plugins/plugin-dev/api/plugins/notes": detail,
     "POST /plugins/plugin-dev/api/plugins/notes/check": { ...detail, check: { at: new Date().toISOString(), output: "notes 0.1.0\nNothing's wrong with it.", failed: false } },
   });
-  expect(root.querySelector("h1")?.textContent).toBe("notes 0.1.0");
+  await vi.waitFor(() => expect(root.querySelector("h1")?.textContent).toBe("notes 0.1.0"));
   for (const want of ["Says the greeting", "greeting", "2 lines", "It's logged nothing.", "Linked to /src/plugin-notes"]) expect(root.textContent).toContain(want);
 
   const button = (label: string) => [...root.querySelectorAll("button")].find((b) => b.textContent === label)!;
@@ -110,12 +114,13 @@ test("a plugin's screen, loaded at its own address, checks it and asks again whe
 
 test("this plugin has no Restart, and what the plugin refuses is said", async () => {
   const { root } = await page("/p/plugin-dev", { "GET /plugins/plugin-dev/api/plugins/plugin-dev": { ...detail, name: "plugin-dev", self: true } });
+  await vi.waitFor(() => expect(root.querySelector("button")).not.toBeNull());
   expect([...root.querySelectorAll("button")].map((b) => b.textContent)).toEqual(["Check"]);
   root.querySelector("button")!.click();
   await vi.waitFor(() => expect(root.querySelector(".notice.error")?.textContent).toContain("nothing answers POST"));
 
   const gone = await page("/p/nobody", {});
-  expect(gone.root.querySelector(".notice.error")?.textContent).toContain("nothing answers GET /plugins/plugin-dev/api/plugins/nobody");
+  await vi.waitFor(() => expect(gone.root.querySelector(".notice.error")?.textContent).toContain("nothing answers GET /plugins/plugin-dev/api/plugins/nobody"));
 });
 
 test("with a ws that speaks no frame protocol it does, the page says which to update", async () => {

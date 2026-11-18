@@ -1,0 +1,62 @@
+// The app's hooks onto ws: where it is, its title, and asking the plugin.
+// ws keeps the history: a link to ws.href(…), or ws.go(…), asks it to move,
+// and usePath follows when it has. The app never moves first.
+
+import type { Client } from "@withworkspace/ui-lib";
+import { useEffect, useState } from "preact/hooks";
+
+/** usePath is the path in the plugin ws's address is at: /p/notes. */
+export function usePath(ws: Client): string {
+  const [path, setPath] = useState(ws.path);
+  useEffect(() => ws.onNavigate(setPath), [ws]);
+  return path;
+}
+
+/** useTitle says the page's title, for the tab. */
+export function useTitle(ws: Client, title: string) {
+  useEffect(() => ws.setTitle(title), [ws, title]);
+}
+
+export const said = (err: unknown) => (err instanceof Error ? err.message : String(err));
+
+/**
+ * ask is a path in the plugin's own HTTP (api.go), answered. What goes
+ * wrong there is said in plain text.
+ */
+export async function ask<T>(ws: Client, path: string, method = "GET"): Promise<T> {
+  const res = await fetch(ws.api(path), { method });
+  if (!res.ok) throw new Error((await res.text()).trim() || `${path} answered ${res.status}`);
+  return (await res.json()) as T;
+}
+
+export interface Asked<T> {
+  /** What the plugin last answered, once it has. */
+  data?: T;
+  /** Why the last ask failed: "" when it didn't. */
+  failed: string;
+  /** set puts an answer in place of what was asked: a POST's, say. */
+  set(data: T): void;
+}
+
+/**
+ * useAsk asks the plugin for path, and again each time it says what the
+ * app shows is stale (p.Changed() in the Go framework).
+ */
+export function useAsk<T>(ws: Client, path: string): Asked<T> {
+  const [state, setState] = useState<{ data?: T; failed: string }>({ failed: "" });
+  useEffect(() => {
+    let live = true;
+    const load = () =>
+      ask<T>(ws, path).then(
+        (data) => live && setState({ data, failed: "" }),
+        (err) => live && setState((s) => ({ ...s, failed: said(err) })),
+      );
+    void load();
+    const stop = ws.onChanged(() => void load());
+    return () => {
+      live = false;
+      stop();
+    };
+  }, [ws, path]);
+  return { ...state, set: (data) => setState({ data, failed: "" }) };
+}
