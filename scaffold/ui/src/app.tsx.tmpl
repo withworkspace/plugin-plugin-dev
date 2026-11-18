@@ -1,0 +1,116 @@
+// The [[.Name]] plugin's app: two screens, the greeting (/) and what this
+// is (/about). ws serves the page this runs in, with its theme already
+// there and an empty #root. This connects to ws, asks the plugin for what
+// it shows, and renders into #root.
+//
+// It's a Preact app. ws keeps the history: the screen is whatever usePath
+// (ws.ts) says, and a link to ws.href(…) is all it takes to move. A link
+// to a page of ws's own (<a href="/missions">) goes there, in ws.
+//
+// It's built into ui/dist (npm run build), which is committed: the plugin
+// is built with what's there.
+
+import { type Client, type ConnectOptions, connect } from "@withworkspace/ui-lib";
+import { render } from "preact";
+import { useEffect, useState } from "preact/hooks";
+import { ask, said, usePath, useTitle } from "./ws";
+
+// What the plugin answers at /api/visits (main.go).
+interface Visits {
+  greeting: string;
+  visits: number;
+}
+
+function Greeting({ ws }: { ws: Client }) {
+  useTitle(ws, "[[.Title]]");
+  const [seen, setSeen] = useState<Visits>(); // what the plugin last answered
+  const [failed, setFailed] = useState(""); // why it didn't
+  useEffect(() => {
+    // p.HandleFunc("GET /api/visits") in main.go answers this. (A screen
+    // that only reads has useAsk, in ws.ts, to do all of this.)
+    const load = (method = "GET") =>
+      ask<Visits>(ws, "/api/visits", method).then(
+        (v) => [setSeen(v), setFailed("")],
+        (err) => setFailed(said(err)),
+      );
+    // Each look at the app is counted, as it loads.
+    void load("POST");
+    // The plugin said what this shows is stale (p.Changed() in main.go, as
+    // `ws [[.Name]] visits --add` does, or the greeting changed in
+    // Settings): ask again.
+    return ws.onChanged(() => void load());
+  }, [ws]);
+  return (
+    <main>
+      <h1>{seen ? `${seen.greeting}, workspace` : "[[.Title]]"}</h1>
+      {failed ? <p class="error">{failed}</p> : <p class="dim">{seen ? `Seen ${seen.visits} ${seen.visits === 1 ? "time" : "times"}.` : "Loading…"}</p>}
+      <p>
+        <a href={ws.href("/about")}>About this plugin</a>
+      </p>
+    </main>
+  );
+}
+
+function About({ ws }: { ws: Client }) {
+  useTitle(ws, "About · [[.Title]]");
+  // The theme is applied already: this says which it is, so it follows.
+  const [scheme, setScheme] = useState(ws.theme.scheme);
+  useEffect(() => ws.onTheme((t) => setScheme(t.scheme)), [ws]);
+  return (
+    <main>
+      <p>
+        <a href={ws.href("/")}>← [[.Title]]</a>
+      </p>
+      <h1>About</h1>
+      <p>
+        This is the {ws.name} plugin's app, in a page ws serves. It talks to ws in frame protocol {ws.version}, and ws's theme is {scheme}.
+      </p>
+      <p class="dim">Its screens are in ui/src/app.tsx, and what it asks the plugin is in main.go.</p>
+    </main>
+  );
+}
+
+function Nowhere({ ws, path }: { ws: Client; path: string }) {
+  useTitle(ws, "[[.Title]]");
+  return (
+    <main>
+      <h1>Nothing here</h1>
+      <p>
+        There's nothing at {path}. <a href={ws.href("/")}>[[.Title]]</a>
+      </p>
+    </main>
+  );
+}
+
+// App is the screen at the path ws says the app is at.
+function App({ ws }: { ws: Client }) {
+  const path = usePath(ws).split("?")[0] ?? "/";
+  if (path === "/") return <Greeting ws={ws} />;
+  if (path === "/about") return <About ws={ws} />;
+  return <Nowhere ws={ws} path={path} />;
+}
+
+/**
+ * start connects to ws and renders the app into the page's #root. It
+ * resolves with the client once the app's rendered, or with nothing where
+ * there's no ws to connect to, which the page then says.
+ */
+export async function start(options: ConnectOptions = {}): Promise<Client | undefined> {
+  let ws: Client;
+  try {
+    ws = await connect(options);
+  } catch (err) {
+    // A ProtocolError (ws and this app speak no frame protocol version in
+    // common) or a NoHostError (the page isn't in ws's frame): its
+    // message says which, and what to update.
+    render(
+      <main>
+        <p class="error">{said(err)}</p>
+      </main>,
+      document.getElementById("root") ?? document.body,
+    );
+    return undefined;
+  }
+  render(<App ws={ws} />, ws.root);
+  return ws;
+}

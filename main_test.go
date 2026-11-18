@@ -150,7 +150,7 @@ func TestNew(t *testing.T) {
 	into := filepath.Join(dir, "plugin-my-notes")
 	for _, f := range []string{
 		"plugin.toml", "main.go", "main_test.go", "agents.md", ".gitignore", "README.md", "migrations/0001_visits.sql",
-		"ui/package.json", "ui/tsconfig.json", "ui/src/main.ts", "ui/src/app.ts", "ui/src/app.css", "ui/src/app.test.ts",
+		"ui/package.json", "ui/tsconfig.json", "ui/src/main.ts", "ui/src/app.tsx", "ui/src/ws.ts", "ui/src/app.css", "ui/src/app.test.ts",
 		".github/workflows/release.yml", ".github/workflows/pr.yml",
 	} {
 		if _, err := os.Stat(filepath.Join(into, f)); err != nil {
@@ -181,8 +181,8 @@ func TestNew(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(into, "views")); err == nil {
 		t.Error("it wrote a folder of pages")
 	}
-	if got := read("ui/src/app.ts"); !strings.Contains(got, `from "@withworkspace/ui-lib"`) || !strings.Contains(got, `title: "My notes"`) {
-		t.Errorf("ui/src/app.ts:\n%s", got)
+	if got := read("ui/src/app.tsx"); !strings.Contains(got, `from "@withworkspace/ui-lib"`) || !strings.Contains(got, `useTitle(ws, "My notes")`) {
+		t.Errorf("ui/src/app.tsx:\n%s", got)
 	}
 	// Its app is built with what this plugin's own app is: the same
 	// ui-lib, and the same of everything else.

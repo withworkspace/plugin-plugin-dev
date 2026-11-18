@@ -43,7 +43,8 @@ A plugin's web UI is one client-side app, and ws serves the page it runs in: a p
 
 | | |
 |---|---|
-| `ui/src/app.ts` | The app: two screens, on [`@withworkspace/ui-lib`](https://www.npmjs.com/package/@withworkspace/ui-lib). It connects to ws, asks the plugin for what it shows, sets its title, keeps its address in step with ws's, and asks again when the plugin says what it shows is stale. |
+| `ui/src/app.tsx` | The app: two screens, in [Preact](https://preactjs.com), on [`@withworkspace/ui-lib`](https://www.npmjs.com/package/@withworkspace/ui-lib). It connects to ws, asks the plugin for what it shows, sets its title, shows the screen at the path ws says it's at, and asks again when the plugin says what it shows is stale. |
+| `ui/src/ws.ts` | Its hooks onto ws: `usePath` (ws keeps the history, and this is where it says the app is), `useTitle`, and `useAsk` for what a screen asks the plugin. |
 | `ui/src/app.css` | Its styles, in ws's tokens (`--ws-*`), so it's in ws's theme from its first paint |
 | `ui/src/app.test.ts` | Its test, against `ui-lib`'s stand-in for ws |
 | `ui/dist/` | The app as built, which is committed: the plugin is built with what's there, so Go alone builds, tests and installs it |
