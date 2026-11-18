@@ -1,9 +1,9 @@
 name: Release
 
 # A v* tag builds the plugin for each platform below and publishes the
-# builds as a GitHub release: what `ws plugin add owner/repo` installs. A
-# pull request that changes this file runs the builds without releasing,
-# to try them.
+# builds as a GitHub release: what `ws plugin add owner/repo` installs. The
+# release is of the version the tag says: v0.4.0 is 0.4.0. A pull request
+# that changes this file runs the builds without releasing, to try them.
 on:
   push:
     tags: ["v*"]
@@ -26,18 +26,13 @@ jobs:
       - name: Build each platform's
         run: |
           name=$(sed -n 's/^name *= *"\(.*\)"/\1/p' plugin.toml)
-          version=$(sed -n 's/^version *= *"\(.*\)"/\1/p' plugin.toml)
           case "$GITHUB_REF" in
-            refs/tags/*)
-              tag="$GITHUB_REF_NAME"
-              # A release is of the version plugin.toml says it is.
-              if [ "$tag" != "v$version" ]; then
-                echo "the tag is $tag, and plugin.toml says version $version: tag it v$version, or change plugin.toml"
-                exit 1
-              fi
-              ;;
+            refs/tags/*) tag="$GITHUB_REF_NAME" ;;
             *) tag="dev-$(echo "$GITHUB_SHA" | cut -c1-7)" ;;
           esac
+          # The version is the tag's. plugin.toml has none in the repo: each
+          # build's is given it, under its name.
+          version=${tag#v}
           mkdir dist
           # The framework is pure Go, so every platform's is built from here.
           # Each is its plugin.toml and what its command starts (ws-<name>).
@@ -46,7 +41,8 @@ jobs:
             arch=${platform#*/}
             rm -rf out && mkdir out
             CGO_ENABLED=0 GOOS="$os" GOARCH="$arch" go build -trimpath -ldflags="-s -w" -o "out/ws-$name" .
-            cp plugin.toml out/
+            awk -v v="$version" '/^version *=/ { next } { print } /^name *=/ { print "version = \"" v "\"" }' plugin.toml > out/plugin.toml
+            grep -q '^version = ' out/plugin.toml || { echo "plugin.toml has no name line to put the version under"; exit 1; }
             tar -czf "dist/${name}_${tag}_${os}_${arch}.tar.gz" -C out .
           done
           cd dist

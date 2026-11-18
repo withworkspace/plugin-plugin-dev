@@ -165,6 +165,14 @@ func TestNew(t *testing.T) {
 	if got := read("plugin.toml"); !strings.Contains(got, `name    = "my-notes"`) || !strings.Contains(got, `"ws-my-notes"`) {
 		t.Errorf("plugin.toml:\n%s", got)
 	}
+	// It has no version: a release is of the version its tag says, which
+	// release.yml writes into each build's.
+	if got := read("plugin.toml"); strings.Contains(got, "version") {
+		t.Errorf("plugin.toml says a version:\n%s", got)
+	}
+	if got := read(".github/workflows/release.yml"); !strings.Contains(got, "version=${tag#v}") {
+		t.Errorf("release.yml doesn't take the version from the tag:\n%s", got)
+	}
 	filepath.WalkDir(into, func(path string, e fs.DirEntry, err error) error { //nolint:errcheck // a test's own folder
 		if err == nil && !e.IsDir() {
 			if data, _ := os.ReadFile(path); strings.Contains(string(data), "[[") {

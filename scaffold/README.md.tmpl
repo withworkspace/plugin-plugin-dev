@@ -15,7 +15,7 @@ Run in this folder, it builds the plugin, runs it in the workspace, and does bot
 | `ui/dist/` | The app as built. It's committed: the plugin is built with what's there, so Go alone builds it |
 | `migrations/` | Its database, one `.sql` file per change (`ws plugin-dev migration <name>`) |
 | `agents.md` | What agents are told of it |
-| `plugin.toml` | Its name and version, and how it's built and started |
+| `plugin.toml` | Its name, and how it's built and started |
 
 ```bash
 ws plugin-dev check
@@ -53,7 +53,7 @@ runs the app against `ui-lib`'s stand-in for ws. The app's packages need npm 11 
 
 ## Publishing it
 
-Once it's a repo on GitHub, a tag publishes it: `.github/workflows/release.yml` builds it for macOS and Linux, on Intel and ARM, and makes a GitHub release of the builds. The tag is `v` and the `version` in `plugin.toml`.
+Once it's a repo on GitHub, a tag publishes it: `.github/workflows/release.yml` builds it for macOS and Linux, on Intel and ARM, and makes a GitHub release of the builds. The tag is the version: `v0.1.0` is 0.1.0. `plugin.toml` has no version in the repo, and each build's is given the tag's.
 
 ```bash
 git tag v0.1.0
