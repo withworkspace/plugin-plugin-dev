@@ -59,7 +59,7 @@ A plugin written this way shows only in a ws that serves a plugin's page itself.
 
 A new plugin comes with two workflows for GitHub Actions:
 
-- **`release.yml`**: pushing a tag `v<version>` builds the plugin for macOS and Linux, on Intel and ARM, and publishes the builds as a GitHub release with their checksums. That release is what `ws plugin add owner/repo` installs. The tag has to match `version` in `plugin.toml`.
+- **`release.yml`**: pushing a tag `v<version>` builds the plugin for macOS and Linux, on Intel and ARM, and publishes the builds as a GitHub release with their checksums. That release is what `ws plugin add owner/repo` installs. The tag is the version: `plugin.toml` has none in the repo, and each build's is given the tag's.
 - **`pr.yml`**: a pull request is vetted, built and tested, its app is tested, and it fails if `ui/dist/` isn't what `ui/src/` builds.
 
 ```bash
@@ -126,7 +126,7 @@ cd ui && npm test
 
 ## Releasing
 
-A release is a tag `v<version>` on `main`, where `<version>` is `version` in `plugin.toml`: `release.yml` builds it for each platform and publishes the builds. It depends on a released version of the framework (`go.mod`), never a commit of its `main`.
+A release is a tag `v<version>` on `main`: `release.yml` builds it for each platform, writes the tag's version into each build's `plugin.toml`, and publishes the builds. `plugin.toml` has no version in the repo, so no change sets one. It depends on a released version of the framework (`go.mod`), never a commit of its `main`.
 
 v0.2.0 is the first on the framework's v0.2.0, where a plugin's pages became an app: the plugins it starts have an app, and so does it.
 
