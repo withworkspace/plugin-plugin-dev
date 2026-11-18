@@ -130,4 +130,4 @@ A release is a tag `v<version>` on `main`, where `<version>` is `version` in `pl
 
 v0.2.0 is the first on the framework's v0.2.0, where a plugin's pages became an app: the plugins it starts have an app, and so does it.
 
-v0.3.0 is on the framework's v0.4.0: its app and a new plugin's are Preact apps, ws keeps their history, and a new plugin starts on v0.4.0.
+v0.3.1 is on the framework's v0.4.0: its app and a new plugin's are Preact apps, ws keeps their history, and a new plugin starts on v0.4.0.
