@@ -1,0 +1,19 @@
+{
+  "name": "ws-[[.Name]]-ui",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc && esbuild app=src/main.ts app=src/app.css --bundle --format=esm --target=es2023 --minify --outdir=dist",
+    "typecheck": "tsc",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@withworkspace/ui-lib": "[[dep "@withworkspace/ui-lib"]]"
+  },
+  "devDependencies": {
+    "esbuild": "[[dep "esbuild"]]",
+    "happy-dom": "[[dep "happy-dom"]]",
+    "typescript": "[[dep "typescript"]]",
+    "vitest": "[[dep "vitest"]]"
+  }
+}

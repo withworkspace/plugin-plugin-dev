@@ -6,12 +6,13 @@ A ws plugin, written with [the plugin framework](https://github.com/withworkspac
 ws plugin-dev watch
 ```
 
-Run in this folder, it builds the plugin, runs it in the workspace, and does both again on each save. Its page is in the web UI's sidebar, and its commands are `ws [[.Name]] …`.
+Run in this folder, it builds the plugin, runs it in the workspace, and does both again on each save. Its app is in the web UI's sidebar, and its commands are `ws [[.Name]] …`.
 
 | | |
 |---|---|
-| `main.go` | What the plugin declares: its config, its view, its commands |
-| `views/` | Its pages, as Go templates |
+| `main.go` | What the plugin declares: its config, its app and what the app asks it, its commands |
+| `ui/` | Its app, which ws shows in a page of its own: `src/app.ts` and `src/app.css`, on [`@withworkspace/ui-lib`](https://www.npmjs.com/package/@withworkspace/ui-lib) |
+| `ui/dist/` | The app as built. It's committed: the plugin is built with what's there, so Go alone builds it |
 | `migrations/` | Its database, one `.sql` file per change (`ws plugin-dev migration <name>`) |
 | `agents.md` | What agents are told of it |
 | `plugin.toml` | Its name and version, and how it's built and started |
@@ -27,6 +28,28 @@ go test ./...
 ```
 
 runs it against a stand-in for ws.
+
+## Its app
+
+The plugin has no HTML. ws serves the page, with its theme in it, and loads the app there. The app talks to ws with `@withworkspace/ui-lib` (where it is, its title, the theme, when what it shows is stale), and to the plugin over the plugin's own HTTP: `p.HandleFunc("GET /api/visits", …)` in `main.go` is `fetch(ws.api("/api/visits"))` in the app.
+
+`ws plugin-dev watch` builds the app whenever a file under `ui/` is saved. By hand, in `ui/`:
+
+```bash
+npm install
+```
+
+```bash
+npm run build
+```
+
+type-checks it and writes `dist/app.js` and `dist/app.css`. Commit `ui/dist/` with the change that made it: a pull request fails if it isn't what `ui/src/` builds.
+
+```bash
+npm test
+```
+
+runs the app against `ui-lib`'s stand-in for ws. The app's packages need npm 11 or later, which comes with Node 24.
 
 ## Publishing it
 

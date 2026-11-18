@@ -5,9 +5,11 @@ import (
 	"testing"
 
 	"github.com/withworkspace/plugin/plugintest"
+	"github.com/withworkspace/plugin/protocol"
 )
 
-// The plugin, run inside the test against a stand-in for ws.
+// The plugin, run inside the test against a stand-in for ws. The app
+// itself is tested in ui/ (npm test).
 func TestPlugin(t *testing.T) {
 	ws := plugintest.New(t, files, setup)
 
@@ -15,8 +17,33 @@ func TestPlugin(t *testing.T) {
 		t.Errorf("say: exit %d, %q", out.Exit, out.Stdout)
 	}
 
-	page := ws.Get("/")
-	if page.Status != 200 || !strings.Contains(page.Body, "Hello, workspace") {
-		t.Errorf("the page: %d\n%s", page.Status, page.Body)
+	// The app, as built into ui/dist, is what ws is told to load, served
+	// as what it is. The plugin serves no page of its own: ws serves the
+	// page the app runs in.
+	reg := ws.Registration()
+	if reg.UI == nil || !strings.HasPrefix(reg.UI.Script, "/ui/app.js?v=") {
+		t.Fatalf("the app registered: %+v", reg.UI)
+	}
+	if js := ws.Get(reg.UI.Script); js.Status != 200 || !strings.HasPrefix(js.Header.Get("Content-Type"), "text/javascript") {
+		t.Errorf("the app's entry: %d, %q", js.Status, js.Header.Get("Content-Type"))
+	}
+	if page := ws.Get("/"); page.Status != 404 {
+		t.Errorf("the plugin answered at its view's path, which is ws's to serve: %d\n%s", page.Status, page.Body)
+	}
+
+	// What the app asks: each look at it is counted.
+	if got := ws.Post("/api/visits", nil); strings.TrimSpace(got.Body) != `{"greeting":"Hello","visits":1}` {
+		t.Errorf("the first look: %d\n%s", got.Status, got.Body)
+	}
+
+	// visits --add counts one more, and tells the open app to ask again.
+	if out := ws.Run("visits", "--add"); out.Stdout != "Visits:  2\n" {
+		t.Errorf("visits --add: exit %d, %q %q", out.Exit, out.Stdout, out.Stderr)
+	}
+	if n := len(ws.Notifications(protocol.MethodViewChanged)); n != 1 {
+		t.Errorf("the open app was told %d times that what it shows is stale", n)
+	}
+	if got := ws.Get("/api/visits"); strings.TrimSpace(got.Body) != `{"greeting":"Hello","visits":2}` {
+		t.Errorf("what the app is told then: %d\n%s", got.Status, got.Body)
 	}
 }

@@ -1,0 +1,31 @@
+/* The app's own styles. Every colour, size and space is one of ws's
+   tokens (--ws-*), which the page has before this loads: the app is in
+   ws's theme from its first paint, and follows it when it changes. The
+   tokens there are: https://github.com/withworkspace/ui-lib/blob/main/PROTOCOL.md#the-tokens */
+
+main {
+  max-width: 60ch;
+  margin: 0 auto;
+  padding: var(--ws-space-8);
+}
+h1 {
+  margin: 0 0 var(--ws-space-2);
+  font-size: var(--ws-text-xl);
+  font-weight: 600;
+}
+p {
+  margin: 0 0 var(--ws-space-3);
+}
+a {
+  color: var(--ws-accent);
+  text-decoration: none;
+}
+a:hover {
+  text-decoration: underline;
+}
+.dim {
+  color: var(--ws-dim);
+}
+.error {
+  color: var(--ws-danger);
+}

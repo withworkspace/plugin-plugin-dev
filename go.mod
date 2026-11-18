@@ -2,7 +2,7 @@ module github.com/withworkspace/plugin-plugin-dev
 
 go 1.26.0
 
-require github.com/withworkspace/plugin v0.0.0-20261117152125-378f6ea79b17
+require github.com/withworkspace/plugin v0.2.0
 
 require (
 	github.com/dustin/go-humanize v1.1.0 // indirect
