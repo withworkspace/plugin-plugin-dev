@@ -2,8 +2,18 @@
 // ws keeps the history: a link to ws.href(…), or ws.go(…), asks it to move,
 // and usePath follows when it has. The app never moves first.
 
-import type { Client } from "@withworkspace/ui-lib";
-import { useEffect, useState } from "preact/hooks";
+import type { Client, Endpoints } from "@withworkspace/ui-lib";
+import { useEffect, useRef, useState } from "preact/hooks";
+import type { Api } from "./api.gen";
+
+/**
+ * Plugin asks the plugin's endpoints (plugin.Get, plugin.Post… in
+ * main.go), by what each takes and answers: plugin.get("/api/visits") is a
+ * Visits. Api is written from the plugin's Go by `go tool apigen`, so a
+ * path that isn't the plugin's, or an answer read as what it isn't,
+ * doesn't compile. It's made once, in app.tsx: endpoints<Api>(ws).
+ */
+export type Plugin = Endpoints<Api>;
 
 /** usePath is the path in the plugin ws's address is at: /p/notes. */
 export function usePath(ws: Client): string {
@@ -17,17 +27,8 @@ export function useTitle(ws: Client, title: string) {
   useEffect(() => ws.setTitle(title), [ws, title]);
 }
 
+/** said is why something failed, as words: what the plugin answered, for an endpoint that couldn't. */
 export const said = (err: unknown) => (err instanceof Error ? err.message : String(err));
-
-/**
- * ask is a path in the plugin's own HTTP (main.go), answered. What goes
- * wrong there is said in plain text.
- */
-export async function ask<T>(ws: Client, path: string, method = "GET"): Promise<T> {
-  const res = await fetch(ws.api(path), { method });
-  if (!res.ok) throw new Error((await res.text()).trim() || `${path} answered ${res.status}`);
-  return (await res.json()) as T;
-}
 
 export interface Asked<T> {
   /** What the plugin last answered, once it has. */
@@ -39,15 +40,24 @@ export interface Asked<T> {
 }
 
 /**
- * useAsk asks the plugin for path, and again each time it says what the
- * app shows is stale (p.Changed() in the Go framework).
+ * useAsk asks the plugin, and again each time it says what the app shows
+ * is stale (p.Changed() in the Go framework). ask is the asking, and what
+ * it's asked with goes beside it, as an effect's does: it asks again when
+ * any of that changes.
+ *
+ *   const issue = useAsk(ws, () => plugin.get("/api/issues/{key}", { params: { key } }), [key]);
+ *
+ * What it gives is the type the endpoint answers with.
  */
-export function useAsk<T>(ws: Client, path: string): Asked<T> {
+export function useAsk<T>(ws: Client, ask: () => Promise<T>, asked: readonly unknown[] = []): Asked<T> {
   const [state, setState] = useState<{ data?: T; failed: string }>({ failed: "" });
+  // The asking as it's last written, which what it's asked with stands for.
+  const latest = useRef(ask);
+  latest.current = ask;
   useEffect(() => {
     let live = true;
     const load = () =>
-      ask<T>(ws, path).then(
+      latest.current().then(
         (data) => live && setState({ data, failed: "" }),
         (err) => live && setState((s) => ({ ...s, failed: said(err) })),
       );
@@ -57,6 +67,6 @@ export function useAsk<T>(ws: Client, path: string): Asked<T> {
       live = false;
       stop();
     };
-  }, [ws, path]);
+  }, [ws, ...asked]);
   return { ...state, set: (data) => setState({ data, failed: "" }) };
 }

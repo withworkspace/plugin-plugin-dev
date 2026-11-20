@@ -28,12 +28,12 @@ cd plugin-notes
 ws plugin-dev watch
 ```
 
-builds it, links it into the workspace and starts it: *Notes* is in the sidebar, and `ws notes say` is a command. Then, on every save, it builds it and starts it again, and its open app loads itself afresh. When the save is of a file of its app (under `ui/`), the app is built first (`npm run build`). What the plugin logs is shown as it's written. A build that fails is shown, and the last one that built keeps running. Ctrl-C stops watching; the plugin stays linked and running.
+builds it, links it into the workspace and starts it: *Notes* is in the sidebar, and `ws notes say` is a command. Then, on every save, it builds it and starts it again, and its open app loads itself afresh. When the save is of a file of its app (under `ui/`), the app is built first (`npm run build`). When it's of the plugin's Go, the app's types of the plugin's endpoints are written again beside the build (`go tool apigen`), and where they changed the app is built with them. What the plugin logs is shown as it's written. A build that fails is shown, and the last one that built keeps running. Ctrl-C stops watching; the plugin stays linked and running.
 
 | Command | What it does |
 |---|---|
 | `ws plugin-dev new NAME` | A new plugin in `plugin-NAME/` (`--dir` for somewhere else; `--no-build` and `--no-module` leave its app and its Go module to be set up by hand) |
-| `ws plugin-dev watch [FOLDER]` | Build it, and its app when that changed, and run it in the workspace, again on every save |
+| `ws plugin-dev watch [FOLDER]` | Build it, and its app when that changed, and run it in the workspace, again on every save. A save of its Go writes its app's types of its endpoints again. |
 | `ws plugin-dev migration NAME` | The next numbered file in the plugin's `migrations/` |
 | `ws plugin-dev check [FOLDER]` | What it registers, and what's wrong with it |
 
@@ -45,11 +45,12 @@ A plugin's web UI is one client-side app, and ws serves the page it runs in: a p
 |---|---|
 | `ui/src/app.tsx` | The app: two screens, in [Preact](https://preactjs.com), on [`@withworkspace/ui-lib`](https://www.npmjs.com/package/@withworkspace/ui-lib). It connects to ws, asks the plugin for what it shows, sets its title, shows the screen at the path ws says it's at, and asks again when the plugin says what it shows is stale. |
 | `ui/src/ws.ts` | Its hooks onto ws: `usePath` (ws keeps the history, and this is where it says the app is), `useTitle`, and `useAsk` for what a screen asks the plugin. |
+| `ui/src/api.gen.ts` | What the plugin's endpoints take and answer, as the app's types: written from `main.go` by `go tool apigen`, and committed. The app asks through `ui-lib`'s `endpoints`, given it, so it can't ask for what isn't there or read what isn't sent. |
 | `ui/src/app.css` | Its styles, in ws's tokens (`--ws-*`), so it's in ws's theme from its first paint |
 | `ui/src/app.test.ts` | Its test, against `ui-lib`'s stand-in for ws |
 | `ui/dist/` | The app as built, which is committed: the plugin is built with what's there, so Go alone builds, tests and installs it |
 
-`main.go` declares the app (`p.UI("ui/dist")`), its entry in the sidebar (`p.View`), and what the app asks the plugin (`p.HandleFunc("GET /api/visits", …)`).
+`main.go` declares the app (`p.UI("ui/dist")`), its entry in the sidebar (`p.View`), and what the app asks the plugin: endpoints, each with the Go types it takes and answers (`plugin.Get(p, "/api/visits", …)` answers a `Visits`). The new plugin's module has the framework's `apigen` as a tool, which writes those types for the app. `watch` runs it; by hand it's `go tool apigen`, and a pull request to the new plugin fails if `ui/src/api.gen.ts` isn't what its Go says ([What the app asks the plugin](https://github.com/withworkspace/plugin#what-the-app-asks-the-plugin)).
 
 `ws plugin-dev check` is `ws plugin check`: it says what the plugin registers, with its app's files (`ui`), and what's wrong with it. A view with no app, an app whose files aren't served as what they are, and a plugin that serves HTML where ws serves its page are each wrong.
 

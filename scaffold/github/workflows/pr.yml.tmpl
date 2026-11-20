@@ -19,6 +19,11 @@ jobs:
         with:
           node-version: 24
 
+      # What the app is told of the plugin's endpoints is what the Go
+      # says: ui/src/api.gen.ts, which go tool apigen writes.
+      - name: Check the app's types are what the endpoints say
+        run: go tool apigen -check
+
       # The app: its test, and that what's committed in ui/dist is what
       # its source builds. The plugin is built with what's committed.
       - run: npm ci

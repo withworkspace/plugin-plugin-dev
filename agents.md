@@ -7,4 +7,6 @@
 
 A plugin's web UI is an app, in `ui/src/`, built into `ui/dist/`, which is committed. The plugin serves no HTML: ws serves the page. After changing the app, run `npm run build` in `ui/` (`watch` does it on a save) and commit `ui/dist/` with the change.
 
+What the app asks the plugin is an endpoint, declared in Go with the types it takes and answers: `plugin.Get(p, "/api/issues/{key}", func(r *http.Request) (Issue, error) { … })`, and `plugin.Post` with the body as a second argument. Those types are exported, and so is each type they're made of. After changing an endpoint or a type it sends, run `go tool apigen` in the plugin's folder (`watch` does it on a save): it writes `ui/src/api.gen.ts`, which the app's `endpoints<Api>(ws)` is typed by. Commit it with the change, and don't edit it by hand.
+
 A new plugin has a workflow that publishes a release of it when a tag `v<version>` is pushed. Don't push a tag unless you're asked to: it publishes.

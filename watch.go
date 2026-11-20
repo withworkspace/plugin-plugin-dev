@@ -2,11 +2,13 @@ package main
 
 import (
 	"bufio"
+	"context"
 	"errors"
 	"fmt"
 	"io"
 	"io/fs"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -118,22 +120,61 @@ func (d *dev) watch(c *plugin.Call) error {
 	log := &follower{path: filepath.Join(d.p.Root(), ".ws", "plugins", name, "data", "plugin.log")}
 	log.skipToEnd()
 
+	// The app's types of the plugin's endpoints (ui/src/api.gen.ts) are
+	// written again after a save of the plugin's Go: beside the build,
+	// not before it, since it takes some seconds and most saves change
+	// nothing of them. Where they do change, the file is a save of the
+	// app's source like any other, and the app is built with it. One is
+	// written at a time: a save while it's being written has it written
+	// again after.
+	typed := make(chan typesWritten, 1)
+	typing, again := false, false
+	writeTypes := func() {
+		switch {
+		case !hasAPIGen(dir):
+		case typing:
+			again = true
+		default:
+			typing = true
+			go func() {
+				text, err := writeAPITypes(ctx, dir)
+				typed <- typesWritten{text, err}
+			}()
+		}
+	}
+
 	// An app that has never been built is built first: the plugin
 	// doesn't build without it.
 	build(hasApp(dir) && !exists(filepath.Join(dir, filepath.FromSlash(appBuilt), "app.js")))
+	writeTypes()
 	say("watching %s: Ctrl-C to stop", dir)
 
 	// The folder's read on a tick, not listened to: it's small, and this
 	// sees every editor's way of saving. A save is often several writes,
 	// so a build follows the first tick on which nothing more changed.
 	before := snapshot(dir, exe)
-	changed, app := false, false
+	changed, app, code := false, false, false
 	tick := time.NewTicker(400 * time.Millisecond)
 	defer tick.Stop()
 	for {
 		select {
 		case <-ctx.Done():
 			return nil
+		case res := <-typed:
+			typing = false
+			// Go that doesn't build is said by the build, which was given
+			// the same save.
+			if res.err != nil && ctx.Err() == nil && !strings.Contains(res.text, "the plugin doesn't build") {
+				say("%s wasn't written (go tool apigen): the app has the types it had", apiTypes)
+				if res.text != "" {
+					fmt.Fprintln(out, "          "+strings.ReplaceAll(res.text, "\n", "\n          "))
+				}
+			}
+			if again {
+				again = false
+				writeTypes()
+			}
+			continue
 		case <-tick.C:
 		}
 		for _, line := range log.lines() {
@@ -142,12 +183,16 @@ func (d *dev) watch(c *plugin.Call) error {
 		now := snapshot(dir, exe)
 		if !same(before, now) {
 			app = app || appChanged(dir, before, now)
+			code = code || goChanged(dir, before, now)
 			before, changed = now, true
 			continue
 		}
 		if changed {
+			if code {
+				writeTypes()
+			}
 			build(app)
-			changed, app = false, false
+			changed, app, code = false, false, false
 			before = snapshot(dir, exe) // what the build itself wrote isn't a save
 		}
 	}
@@ -244,6 +289,50 @@ func notSource(name string) bool {
 	}
 	for _, ext := range []string{".swp", ".swx", ".tmp", ".db", ".db-wal", ".db-shm", ".log"} {
 		if strings.HasSuffix(name, ext) {
+			return true
+		}
+	}
+	return false
+}
+
+// typesWritten is how writing the app's types of the plugin's endpoints
+// went: what apigen printed, and its error.
+type typesWritten struct {
+	text string
+	err  error
+}
+
+// hasAPIGen says whether the plugin in dir has apigen as a tool of its
+// module: whether its app is written the types of its endpoints.
+func hasAPIGen(dir string) bool {
+	mod, err := os.ReadFile(filepath.Join(dir, "go.mod"))
+	return err == nil && strings.Contains(string(mod), apigenTool)
+}
+
+// writeAPITypes writes the app of the plugin in dir the types of its
+// endpoints, ui/src/api.gen.ts: go tool apigen, which leaves the file as
+// it is where nothing of them changed. It returns what that printed, with
+// its error.
+func writeAPITypes(ctx context.Context, dir string) (string, error) {
+	cmd := exec.CommandContext(ctx, "go", "tool", "apigen")
+	cmd.Dir = dir
+	text, err := cmd.CombinedOutput()
+	return strings.TrimSpace(string(text)), err
+}
+
+// goChanged says whether what differs between two snapshots of the
+// plugin in dir is its Go: a .go file, or its module's.
+func goChanged(dir string, a, b map[string]stamp) bool {
+	source := func(path string) bool {
+		return strings.HasSuffix(path, ".go") || path == filepath.Join(dir, "go.mod")
+	}
+	for path, s := range a {
+		if b[path] != s && source(path) {
+			return true
+		}
+	}
+	for path := range b {
+		if _, was := a[path]; !was && source(path) {
 			return true
 		}
 	}
