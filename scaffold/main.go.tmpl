@@ -8,7 +8,6 @@ package main
 import (
 	"context"
 	"embed"
-	"encoding/json"
 	"net/http"
 
 	"github.com/withworkspace/plugin"
@@ -25,6 +24,16 @@ func main() {
 	p := plugin.New(files)
 	setup(p)
 	p.Run()
+}
+
+// What the app is sent is exported: `go tool apigen` writes it for the
+// app, with the endpoints that answer it (ui/src/api.gen.ts).
+
+// Visits is what the app shows: the greeting, and how often the app has
+// been seen.
+type Visits struct {
+	Greeting string `json:"greeting"`
+	Visits   int    `json:"visits"`
 }
 
 // setup declares the plugin: what it declares is what ws is told it adds.
@@ -51,26 +60,25 @@ func setup(p *plugin.Plugin) {
 	p.UI("ui/dist")
 	p.View("[[.Title]]", plugin.Icon("sparkle"))
 
-	// What the app asks, as JSON: the greeting, and how often the app has
-	// been seen. The app fetches it at ws.api("/api/visits").
-	seen := func(w http.ResponseWriter, r *http.Request) {
+	// What the app asks: the greeting, and how often the app has been
+	// seen. An endpoint says what it answers, the framework sends it as
+	// JSON, and an error is answered as its text. `go tool apigen` writes
+	// the app each endpoint's types (ui/src/api.gen.ts), so in the app
+	// plugin.get("/api/visits") is a Visits. After a change to an endpoint
+	// or a type it sends, run it again: ws plugin-dev watch does.
+	seen := func(r *http.Request) (Visits, error) {
 		n, err := visits(r.Context())
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]any{"greeting": greeting.Get(), "visits": n}) //nolint:errcheck // the app has gone
+		return Visits{Greeting: greeting.Get(), Visits: n}, err
 	}
-	p.HandleFunc("GET /api/visits", seen)
+	plugin.Get(p, "/api/visits", seen)
 
-	// Each look at the app is counted: it posts here as it loads.
-	p.HandleFunc("POST /api/visits", func(w http.ResponseWriter, r *http.Request) {
+	// Each look at the app is counted: it posts here as it loads. It's
+	// sent no body (struct{} is nothing), and answers as the read does.
+	plugin.Post(p, "/api/visits", func(r *http.Request, _ struct{}) (Visits, error) {
 		if err := visit(r.Context()); err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
+			return Visits{}, err
 		}
-		seen(w, r)
+		return seen(r)
 	})
 
 	// ws [[.Name]] say [NAME]

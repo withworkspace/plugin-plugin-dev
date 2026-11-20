@@ -11,7 +11,8 @@ Run in this folder, it builds the plugin, runs it in the workspace, and does bot
 | | |
 |---|---|
 | `main.go` | What the plugin declares: its config, its app and what the app asks it, its commands |
-| `ui/` | Its app, which ws shows in a page of its own: `src/app.ts` and `src/app.css`, on [`@withworkspace/ui-lib`](https://www.npmjs.com/package/@withworkspace/ui-lib) |
+| `ui/` | Its app, which ws shows in a page of its own: `src/app.tsx` and `src/app.css`, on [`@withworkspace/ui-lib`](https://www.npmjs.com/package/@withworkspace/ui-lib) |
+| `ui/src/api.gen.ts` | What the plugin's endpoints take and answer, as the app's types. `go tool apigen` writes it from `main.go`, and it's committed |
 | `ui/dist/` | The app as built. It's committed: the plugin is built with what's there, so Go alone builds it |
 | `migrations/` | Its database, one `.sql` file per change (`ws plugin-dev migration <name>`) |
 | `agents.md` | What agents are told of it |
@@ -31,7 +32,25 @@ runs it against a stand-in for ws.
 
 ## Its app
 
-The plugin has no HTML. ws serves the page, with its theme in it, and loads the app there. The app talks to ws with `@withworkspace/ui-lib` (where it is, its title, the theme, when what it shows is stale), and to the plugin over the plugin's own HTTP: `p.HandleFunc("GET /api/visits", …)` in `main.go` is `fetch(ws.api("/api/visits"))` in the app.
+The plugin has no HTML. ws serves the page, with its theme in it, and loads the app there. The app talks to ws with `@withworkspace/ui-lib`: where it is, its title, the theme, when what it shows is stale.
+
+It talks to the plugin through the plugin's endpoints. Each is declared in `main.go` with the Go types it takes and answers, and the app asks with the same types:
+
+```go
+plugin.Get(p, "/api/visits", func(r *http.Request) (Visits, error) { … })
+```
+
+```ts
+const seen = await plugin.get("/api/visits"); // a Visits
+```
+
+The app's types are in `ui/src/api.gen.ts`, written from the Go. After a change to an endpoint or a type it sends:
+
+```bash
+go tool apigen
+```
+
+writes it again, and the app stops compiling wherever it no longer fits. `ws plugin-dev watch` runs it on each save of the Go, and a pull request fails if the file isn't what the Go says. A type the app is sent is exported, and so is each type it's made of. [What the app asks the plugin](https://github.com/withworkspace/plugin#what-the-app-asks-the-plugin) has the rest.
 
 `ws plugin-dev watch` builds the app whenever a file under `ui/` is saved. By hand, in `ui/`:
 

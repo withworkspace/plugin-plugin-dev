@@ -21,8 +21,15 @@ import (
 	"github.com/withworkspace/plugin"
 )
 
-// frameworkModule is the Go module plugins are written with.
-const frameworkModule = "github.com/withworkspace/plugin"
+// frameworkModule is the Go module plugins are written with, and
+// apigenTool its command that writes a plugin's app the types of the
+// plugin's endpoints (ui/src/api.gen.ts), as a tool of the plugin's
+// module.
+const (
+	frameworkModule = "github.com/withworkspace/plugin"
+	apigenTool      = frameworkModule + "/cmd/apigen"
+	apiTypes        = "ui/src/api.gen.ts"
+)
 
 var nameRE = regexp.MustCompile(`^[a-z][a-z0-9-]{0,39}$`)
 
@@ -64,7 +71,7 @@ func (d *dev) new(c *plugin.Call) error {
 		// built with: the one the template was written for.
 		fmt.Fprintln(out, "\nIts Go module:")
 		if err := goModule(c, dir, "plugin-"+name); err != nil {
-			fmt.Fprintf(out, "\nIts Go module isn't set up: %v\nIn %s, run:\n  go mod init plugin-%s\n  go get %s@%s\n  go mod tidy\n", err, dir, name, frameworkModule, frameworkVersion())
+			fmt.Fprintf(out, "\nIts Go module isn't set up: %v\nIn %s, run:\n  go mod init plugin-%s\n  go get %s@%s\n  go get -tool %s@%s\n  go mod tidy\n", err, dir, name, frameworkModule, frameworkVersion(), apigenTool, frameworkVersion())
 		}
 	}
 	fmt.Fprintf(out, "\nNext:\n  cd %s\n  ws plugin-dev watch\n", dir)
@@ -241,7 +248,14 @@ func goModule(c *plugin.Call, dir, module string) error {
 	if _, err := exec.LookPath("go"); err != nil {
 		return errors.New("go isn't installed here")
 	}
-	for _, args := range [][]string{{"mod", "init", module}, {"get", frameworkModule + "@" + frameworkVersion()}, {"mod", "tidy"}} {
+	// apigen is the framework's own, kept as a tool of the module: it
+	// writes the app the types of the plugin's endpoints (go tool apigen).
+	for _, args := range [][]string{
+		{"mod", "init", module},
+		{"get", frameworkModule + "@" + frameworkVersion()},
+		{"get", "-tool", apigenTool + "@" + frameworkVersion()},
+		{"mod", "tidy"},
+	} {
 		fmt.Fprintf(c.Stdout(), "  go %s\n", strings.Join(args, " "))
 		cmd := exec.CommandContext(c.Context(), "go", args...)
 		cmd.Dir = dir

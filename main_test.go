@@ -150,7 +150,7 @@ func TestNew(t *testing.T) {
 	into := filepath.Join(dir, "plugin-my-notes")
 	for _, f := range []string{
 		"plugin.toml", "main.go", "main_test.go", "agents.md", ".gitignore", "README.md", "migrations/0001_visits.sql",
-		"ui/package.json", "ui/tsconfig.json", "ui/src/main.ts", "ui/src/app.tsx", "ui/src/ws.ts", "ui/src/app.css", "ui/src/app.test.ts",
+		"ui/package.json", "ui/tsconfig.json", "ui/src/main.ts", "ui/src/app.tsx", "ui/src/ws.ts", "ui/src/api.gen.ts", "ui/src/app.css", "ui/src/app.test.ts",
 		".github/workflows/release.yml", ".github/workflows/pr.yml",
 	} {
 		if _, err := os.Stat(filepath.Join(into, f)); err != nil {
@@ -192,6 +192,17 @@ func TestNew(t *testing.T) {
 	if got := read("ui/src/app.tsx"); !strings.Contains(got, `from "@withworkspace/ui-lib"`) || !strings.Contains(got, `useTitle(ws, "My notes")`) {
 		t.Errorf("ui/src/app.tsx:\n%s", got)
 	}
+	// What the app asks the plugin is endpoints, declared with their
+	// types, which the app asks with: its types are written from the Go.
+	if got := read("main.go"); !strings.Contains(got, `plugin.Get(p, "/api/visits", seen)`) || !strings.Contains(got, `plugin.Post(p, "/api/visits", `) || strings.Contains(got, "HandleFunc") {
+		t.Errorf("main.go's endpoints:\n%s", got)
+	}
+	if got := read("ui/src/api.gen.ts"); !strings.Contains(got, `"GET /api/visits": { out: Visits };`) || !strings.Contains(got, "export interface Visits {") {
+		t.Errorf("ui/src/api.gen.ts:\n%s", got)
+	}
+	if got := read("ui/src/app.tsx"); !strings.Contains(got, `endpoints<Api>(ws)`) || !strings.Contains(got, `plugin.get("/api/visits")`) || strings.Contains(got, "ws.api(") {
+		t.Errorf("ui/src/app.tsx doesn't ask through the plugin's endpoints:\n%s", got)
+	}
 	// Its app is built with what this plugin's own app is: the same
 	// ui-lib, and the same of everything else.
 	var own, its struct {
@@ -213,7 +224,7 @@ func TestNew(t *testing.T) {
 	if got := read(".github/workflows/release.yml"); !strings.Contains(got, "${{ github.token }}") || !strings.Contains(got, `tags: ["v*"]`) {
 		t.Errorf("release.yml:\n%s", got)
 	}
-	if got := read(".github/workflows/pr.yml"); !strings.Contains(got, "npm ci") || !strings.Contains(got, "npm test") || !strings.Contains(got, "git status --porcelain -- ui/dist") {
+	if got := read(".github/workflows/pr.yml"); !strings.Contains(got, "npm ci") || !strings.Contains(got, "npm test") || !strings.Contains(got, "git status --porcelain -- ui/dist") || !strings.Contains(got, "go tool apigen -check") {
 		t.Errorf("pr.yml:\n%s", got)
 	}
 	if got := read(".gitignore"); !strings.Contains(got, "\nnode_modules/\n") || strings.Contains(got, "\nui/dist") {
@@ -311,11 +322,16 @@ func TestNewBuilds(t *testing.T) {
 			t.Errorf("new left no %s", f)
 		}
 	}
+	// apigen is a tool of its module, and what it writes of the new
+	// plugin's endpoints is what the new plugin came with.
+	if mod, _ := os.ReadFile(filepath.Join(into, "go.mod")); !strings.Contains(string(mod), "tool "+apigenTool) {
+		t.Errorf("its go.mod doesn't have apigen as a tool:\n%s", mod)
+	}
 	// It requires the framework at the version this plugin does.
 	if mod, _ := os.ReadFile(filepath.Join(into, "go.mod")); frameworkVersion() != "latest" && !strings.Contains(string(mod), frameworkModule+" "+frameworkVersion()) {
 		t.Errorf("its go.mod doesn't require %s %s:\n%s", frameworkModule, frameworkVersion(), mod)
 	}
-	for _, run := range [][]string{{"go", "vet", "./..."}, {"go", "test", "./..."}, {"npm", "test", "--prefix", "ui"}} {
+	for _, run := range [][]string{{"go", "vet", "./..."}, {"go", "test", "./..."}, {"go", "tool", "apigen", "-check"}, {"npm", "test", "--prefix", "ui"}} {
 		cmd := exec.Command(run[0], run[1:]...)
 		cmd.Dir = into
 		if text, err := cmd.CombinedOutput(); err != nil {
@@ -585,6 +601,122 @@ func TestWatchBuildsTheApp(t *testing.T) {
 	cancel()
 	res := <-done
 	for _, want := range []string{"building notes's app", "src/app.ts(3,1): error TS1005: nope", "its app didn't build (npm run build failed): what was running still is"} {
+		if !strings.Contains(res.Stdout, want) {
+			t.Errorf("what it printed lacks %q:\n%s", want, res.Stdout)
+		}
+	}
+}
+
+// fakeGo puts a script on the PATH that stands in for go, and writes each
+// thing it's asked to calls, a line each. It's asked one thing, go tool
+// apigen, which writes ui/src/api.gen.ts from the plugin's Go: here, what
+// the file called endpoints says, and only where that isn't what's there.
+// With a file called unexported, it fails as apigen does.
+func fakeGo(t *testing.T) (calls string) {
+	t.Helper()
+	dir := t.TempDir()
+	calls = filepath.Join(dir, "calls")
+	body := `#!/bin/sh
+echo "$*" >> ` + calls + `
+if [ -e unexported ]; then
+	echo "apigen: main.go:3:6: note isn't exported, and it's part of what GET /api/notes takes or answers"
+	exit 1
+fi
+want="// $(cat endpoints)"
+if [ "$(cat ui/src/api.gen.ts 2>/dev/null)" != "$want" ]; then
+	echo "$want" > ui/src/api.gen.ts
+fi
+`
+	if err := os.WriteFile(filepath.Join(dir, "go"), []byte(body), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
+	return calls
+}
+
+// A plugin with apigen as a tool of its module has its app's types of
+// its endpoints written again after each save of its Go, beside the
+// build. Where they changed, the app is built with them, then the plugin.
+func TestWatchWritesTheAppsTypes(t *testing.T) {
+	script, calls := fakeWS(t)
+	npm := fakeNPM(t)
+	gocalls := fakeGo(t)
+	src := t.TempDir()
+	write := func(name, text string) {
+		t.Helper()
+		path := filepath.Join(src, filepath.FromSlash(name))
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(text), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write("plugin.toml", "name = \"notes\"\n")
+	write("go.mod", "module plugin-notes\n\ntool "+apigenTool+"\n")
+	write("main.go", "package main\n")
+	write("endpoints", "one")
+	write("ui/package.json", "{}\n")
+	write("ui/src/app.ts", "export {};\n")
+	write("ui/src/api.gen.ts", "// one\n")
+	write("ui/dist/app.js", "// built\n")
+	ws := plugintest.New(t, files, setup, plugintest.Name("plugin-dev"), plugintest.Dir(src), plugintest.Executable(script))
+
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan plugintest.Result, 1)
+	go func() { done <- ws.RunContext(ctx, "watch") }()
+
+	// What's been asked of go, of npm and of ws, in a line.
+	asked := func() string {
+		n := 0
+		for _, c := range readCalls(t, calls) {
+			if strings.HasPrefix(c, "plugin add ") {
+				n++
+			}
+		}
+		return strings.Join(readCalls(t, gocalls), ", ") + "; " + strings.Join(readCalls(t, npm), ", ") + "; " + strings.Repeat("add ", n)
+	}
+	waitFor := func(what, want string) {
+		t.Helper()
+		for deadline := time.Now().Add(10 * time.Second); asked() != want; time.Sleep(20 * time.Millisecond) {
+			if time.Now().After(deadline) {
+				cancel()
+				t.Fatalf("waited for %s: it asked %q, not %q", what, asked(), want)
+			}
+		}
+		// Nothing more follows of itself.
+		time.Sleep(1200 * time.Millisecond)
+		if asked() != want {
+			cancel()
+			t.Fatalf("after %s it went on to ask %q", what, asked())
+		}
+	}
+	// As it starts, the types are written: they're what was there, so
+	// nothing's built for them.
+	waitFor("the first build", "tool apigen; ; add ")
+	// A save of the Go that changes nothing of the endpoints: the plugin
+	// is built, the types are as they were, and the app isn't built.
+	write("main.go", "package main\n\n// changed\n")
+	waitFor("a save that changes no endpoint", "tool apigen, tool apigen; ; add add ")
+	// A save that changes an endpoint: the plugin is built, and once the
+	// types are written, the app with them and the plugin with the app.
+	write("endpoints", "two")
+	write("main.go", "package main\n\n// an endpoint changed\n")
+	waitFor("a save that changes an endpoint", "tool apigen, tool apigen, tool apigen; install, run build; add add add add ")
+	if got, _ := os.ReadFile(filepath.Join(src, "ui", "src", "api.gen.ts")); string(got) != "// two\n" {
+		t.Errorf("the app's types: %q", got)
+	}
+	// A save of the app alone writes no types.
+	write("ui/src/app.ts", "export {};\n// changed\n")
+	waitFor("a save of the app", "tool apigen, tool apigen, tool apigen; install, run build, run build; add add add add add ")
+	// What apigen can't write is said, and the plugin's still built.
+	write("unexported", "")
+	write("main.go", "package main\n\n// a type that isn't exported\n")
+	waitFor("a save apigen can't write", "tool apigen, tool apigen, tool apigen, tool apigen; install, run build, run build; add add add add add add ")
+
+	cancel()
+	res := <-done
+	for _, want := range []string{"ui/src/api.gen.ts wasn't written (go tool apigen): the app has the types it had", "note isn't exported"} {
 		if !strings.Contains(res.Stdout, want) {
 			t.Errorf("what it printed lacks %q:\n%s", want, res.Stdout)
 		}

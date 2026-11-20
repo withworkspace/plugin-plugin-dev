@@ -10,36 +10,34 @@
 // It's built into ui/dist (npm run build), which is committed: the plugin
 // is built with what's there.
 
-import { type Client, type ConnectOptions, connect } from "@withworkspace/ui-lib";
+import { type Client, type ConnectOptions, connect, endpoints } from "@withworkspace/ui-lib";
 import { render } from "preact";
 import { useEffect, useState } from "preact/hooks";
-import { ask, said, usePath, useTitle } from "./ws";
+// What the plugin's endpoints take and answer, written from its Go
+// (main.go) by `go tool apigen`: Visits is the Go's Visits.
+import type { Api, Visits } from "./api.gen";
+import { type Plugin, said, usePath, useTitle } from "./ws";
 
-// What the plugin answers at /api/visits (main.go).
-interface Visits {
-  greeting: string;
-  visits: number;
-}
-
-function Greeting({ ws }: { ws: Client }) {
+function Greeting({ ws, plugin }: { ws: Client; plugin: Plugin }) {
   useTitle(ws, "[[.Title]]");
   const [seen, setSeen] = useState<Visits>(); // what the plugin last answered
   const [failed, setFailed] = useState(""); // why it didn't
   useEffect(() => {
-    // p.HandleFunc("GET /api/visits") in main.go answers this. (A screen
-    // that only reads has useAsk, in ws.ts, to do all of this.)
-    const load = (method = "GET") =>
-      ask<Visits>(ws, "/api/visits", method).then(
+    // What an endpoint answers is shown, and what it couldn't is said. (A
+    // screen that only reads has useAsk, in ws.ts, to do all of this.)
+    const show = (asked: Promise<Visits>) =>
+      asked.then(
         (v) => [setSeen(v), setFailed("")],
         (err) => setFailed(said(err)),
       );
-    // Each look at the app is counted, as it loads.
-    void load("POST");
+    // Each look at the app is counted, as it loads: plugin.Post(p,
+    // "/api/visits", …) in main.go answers this.
+    void show(plugin.post("/api/visits"));
     // The plugin said what this shows is stale (p.Changed() in main.go, as
     // `ws [[.Name]] visits --add` does, or the greeting changed in
-    // Settings): ask again.
-    return ws.onChanged(() => void load());
-  }, [ws]);
+    // Settings): ask again, of plugin.Get(p, "/api/visits", …).
+    return ws.onChanged(() => void show(plugin.get("/api/visits")));
+  }, [ws, plugin]);
   return (
     <main>
       <h1>{seen ? `${seen.greeting}, workspace` : "[[.Title]]"}</h1>
@@ -83,9 +81,9 @@ function Nowhere({ ws, path }: { ws: Client; path: string }) {
 }
 
 // App is the screen at the path ws says the app is at.
-function App({ ws }: { ws: Client }) {
+function App({ ws, plugin }: { ws: Client; plugin: Plugin }) {
   const path = usePath(ws).split("?")[0] ?? "/";
-  if (path === "/") return <Greeting ws={ws} />;
+  if (path === "/") return <Greeting ws={ws} plugin={plugin} />;
   if (path === "/about") return <About ws={ws} />;
   return <Nowhere ws={ws} path={path} />;
 }
@@ -111,6 +109,7 @@ export async function start(options: ConnectOptions = {}): Promise<Client | unde
     );
     return undefined;
   }
-  render(<App ws={ws} />, ws.root);
+  // The plugin's endpoints, by what each takes and answers.
+  render(<App ws={ws} plugin={endpoints<Api>(ws)} />, ws.root);
   return ws;
 }
