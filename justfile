@@ -14,6 +14,13 @@ check:
     go vet ./...
     go build -o /dev/null .
 
+golangci := "github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.15.0"
+
+# golangci-lint (.golangci.yml) on the plugin. Built with this repo's Go,
+# which a release may be older than.
+lint:
+    go run {{golangci}} run ./...
+
 # Build the app into ui/dist, which is committed: Go alone builds the
 # plugin. It needs Node 24 and npm.
 ui:
